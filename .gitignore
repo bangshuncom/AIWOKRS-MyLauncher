@@ -5,6 +5,9 @@
 # 便携版程序（不上传）
 MyLauncherPortable/
 
+# .workbuddy
+.workbuddy
+
 # 临时文件
 .temp/
 test/
