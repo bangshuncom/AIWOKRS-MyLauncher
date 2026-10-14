@@ -6,6 +6,7 @@ import type { Entry, EntryType } from '@/types'
 import { pickAndCopyImage } from '@/composables/useAssetImagePicker'
 import PathModeFields from '@/components/PathModeFields.vue'
 import SystemAppPicker, { type SystemAppSelection } from '@/components/dialogs/SystemAppPicker.vue'
+import { SYSTEM_TOOLS, toolIconSource } from '@/data/systemTools'
 
 const props = defineProps<{
   entry: Entry | null
@@ -45,7 +46,7 @@ const loadingInfo = ref(false)
 const refreshingIcon = ref(false)
 const showSystemPicker = ref(false)
 
-/** 系统功能/APPX：目标存于 relative_path，无路径区/启动设置/自定义图标/封面 */
+/** 系统功能/APPX：目标存于 relative_path，无路径区/启动设置/封面（图标可自定义并可恢复默认） */
 const isUriType = computed(() => form.value.type === 'system' || form.value.type === 'appx')
 
 /** 打开系统功能/APPX 选择器 */
@@ -71,20 +72,26 @@ function correctLegacyType(e: Entry): EntryType {
   return 'program'
 }
 
-// 选择器回填：系统功能（emoji 图标）/ APPX 应用（真实图标）
+// 选择器回填：系统功能（真实系统图标，emoji 兜底）/ APPX 应用（真实图标）
 function applySystemSelection(sel: SystemAppSelection) {
   form.value.name = sel.name
   form.value.relative_path = sel.target
-  form.value.type = sel.iconEmoji ? 'system' : 'appx'
+  form.value.type = sel.type
   form.value.absolute_paths = {}
   form.value.path_mode = 'relative'
-  form.value.launch_args = ''
+  form.value.launch_args = sel.args || ''
   form.value.working_directory = ''
   form.value.run_as_admin = false
   if (sel.iconEmoji) {
     form.value.icon = { type: 'emoji', source: sel.iconEmoji }
+    form.value.icon_source = ''
   } else if (sel.iconPath) {
     form.value.icon = { type: 'extracted', source: sel.iconPath }
+    form.value.icon_source = sel.iconSource || ''
+  } else {
+    // 未取到图标：清空旧图标，避免残留上一个目标的图标（可在图标区点「恢复默认图标」重试）
+    form.value.icon = { type: 'default', source: '' }
+    form.value.icon_source = sel.iconSource || ''
   }
 }
 
@@ -112,6 +119,7 @@ function loadEntry() {
       run_as_admin: e.run_as_admin,
       url: e.url,
       icon: { ...e.icon },
+      icon_source: e.icon_source || '',
       cover: { ...e.cover },
       tags: [...e.tags],
       notes: e.notes,
@@ -351,9 +359,34 @@ async function fetchFavicon() {
   }
 }
 
-// 重新提取图标（按条目类型分派：程序/文件夹/文件提取真实图标，网址多源链获取 favicon）
+/** 系统功能条目的默认图标来源：优先条目自身的 icon_source，其次按清单反查（旧 emoji 条目升级） */
+function resolveSystemIconSource(): string {
+  const own = form.value.icon_source?.trim() || ''
+  if (own) return own
+  const target = form.value.relative_path?.trim() || ''
+  if (!target) return ''
+  const tool = SYSTEM_TOOLS.find(
+    t => t.target === target && (t.args || '') === (form.value.launch_args || '')
+  )
+  return tool ? toolIconSource(tool) : ''
+}
+
+// 重新提取 / 恢复默认图标
+// （按条目类型分派：程序/文件夹/文件提取真实图标，网址多源链获取 favicon，
+//   系统功能按 icon_source 重提取，APPX 按启动目标重提取）
 async function refreshIcon() {
   error.value = ''
+
+  // 系统功能：把解析出的来源写回草稿，后端才知道从哪个系统资源还原
+  if (form.value.type === 'system') {
+    const src = resolveSystemIconSource()
+    if (!src) {
+      error.value = '找不到该条目的默认图标来源，请重新从选择器选择目标'
+      return
+    }
+    form.value.icon_source = src
+  }
+
   refreshingIcon.value = true
   try {
     // 以当前表单内容构造临时条目传给后端（未保存的新条目也能提取）
@@ -484,6 +517,8 @@ const refreshIconTitle = computed(() => {
     case 'file': return '从文件重新提取图标'
     case 'url': return '多源获取网址图标（获取失败时保持原图标）'
     case 'steam': return '从游戏主程序重新提取图标'
+    case 'system': return '从系统资源还原默认图标（会替换当前自定义图标）'
+    case 'appx': return '从应用包还原默认图标（会替换当前自定义图标）'
     default: return '重新提取图标'
   }
 })
@@ -758,29 +793,29 @@ watch(() => form.value.type, (newType, oldType) => {
           </div>
         </template>
 
-        <!-- 图标（系统功能/APPX 不显示，图标随所选项目） -->
-        <template v-if="!isUriType">
-          <div class="form-section">图标</div>
-          <div class="form-row">
-            <label class="form-label">当前图标</label>
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <div class="icon-preview">
-                <img v-if="form.icon.source && form.icon.type !== 'emoji'" :src="resolveAssetUrl(form.icon.source)" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
-                <span v-else-if="form.icon.type === 'emoji' && form.icon.source" class="icon-emoji-preview">{{ form.icon.source }}</span>
-                <span v-else class="icon-placeholder-text">{{ form.name.charAt(0) || '?' }}</span>
-              </div>
-              <button class="btn" @click="pickIcon">自定义图标...</button>
-              <button v-if="form.type === 'url'" class="btn" @click="fetchFavicon">获取 Favicon</button>
-              <button class="btn" @click="refreshIcon" :disabled="refreshingIcon" :title="refreshIconTitle">
-                {{ refreshingIcon ? '提取中...' : '重新提取图标' }}
-              </button>
+        <!-- 图标（所有类型均可自定义；系统功能/APPX 可一键恢复为系统默认图标） -->
+        <div class="form-section">图标</div>
+        <div class="form-row">
+          <label class="form-label">当前图标</label>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="icon-preview">
+              <img v-if="form.icon.source && form.icon.type !== 'emoji'" :src="resolveAssetUrl(form.icon.source)" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
+              <span v-else-if="form.icon.type === 'emoji' && form.icon.source" class="icon-emoji-preview">{{ form.icon.source }}</span>
+              <span v-else class="icon-placeholder-text">{{ form.name.charAt(0) || '?' }}</span>
             </div>
+            <button class="btn" @click="pickIcon">自定义图标...</button>
+            <button v-if="form.type === 'url'" class="btn" @click="fetchFavicon">获取 Favicon</button>
+            <button class="btn" @click="refreshIcon" :disabled="refreshingIcon" :title="refreshIconTitle">
+              {{ refreshingIcon
+                ? (isUriType ? '恢复中...' : '提取中...')
+                : (isUriType ? '恢复默认图标' : '重新提取图标') }}
+            </button>
           </div>
-          <div class="form-row" v-if="iconPathText">
-            <label class="form-label">存储路径</label>
-            <span class="resource-path-text">{{ iconPathText }}</span>
-          </div>
-        </template>
+        </div>
+        <div class="form-row" v-if="iconPathText">
+          <label class="form-label">存储路径</label>
+          <span class="resource-path-text">{{ iconPathText }}</span>
+        </div>
 
         <!-- 封面图（系统功能/APPX 不显示） -->
         <template v-if="!isUriType">

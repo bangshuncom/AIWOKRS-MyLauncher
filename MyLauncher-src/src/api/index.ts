@@ -140,6 +140,11 @@ export async function extract_appx_icon(appKey: string, shellUri: string): Promi
   return invoke<string>('extract_appx_icon', { appKey, shellUri })
 }
 
+/** 提取系统功能图标。spec: "sys:<文件>|<组索引>" 或 "glyph:<Segoe 码点>"；force 时绕过缓存重提取 */
+export async function extract_system_icon(spec: string, force = false): Promise<string> {
+  return invoke<string>('extract_system_icon', { spec, force })
+}
+
 export async function extract_uri_icon(target: string): Promise<string> {
   return invoke<string>('extract_uri_icon', { target })
 }

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // ════════════════════════════════════════════
 // 系统功能 / APPX 应用选择器对话框
-// 系统功能：emoji 图标（与添加后的条目图标完全一致）
+// 系统功能：提取 Windows 真实系统图标（提取失败时兜底 emoji）
 // APPX 应用：提取系统真实图标
 // ════════════════════════════════════════════
 
-import { ref, computed } from 'vue'
-import { SYSTEM_TOOLS, type SystemTool } from '@/data/systemTools'
+import { ref, computed, onMounted } from 'vue'
+import { SYSTEM_TOOLS, toolIconSource, type SystemTool } from '@/data/systemTools'
 import type { AppxAppInfo } from '@/types'
 import * as api from '@/api'
 import { resolveAssetUrl } from '@/store'
@@ -17,9 +17,15 @@ export interface SystemAppSelection {
   name: string
   /** 启动目标：裸命令（taskmgr.exe）或 URI（ms-settings:）/ shell:AppsFolder */
   target: string
-  /** 图标：emoji 字符（系统功能）或图标相对路径（APPX），空则不设置 */
+  /** 启动参数（如运行对话框的 Run） */
+  args?: string
+  /** 条目类型：system（系统功能）/ appx（应用） */
+  type: 'system' | 'appx'
+  /** 图标：emoji 字符（兜底）或图标相对路径，空则不设置 */
   iconEmoji: string
   iconPath: string
+  /** 图标来源规格（sys:/glyph:），重提取用；emoji 兜底时为空 */
+  iconSource: string
 }
 
 const props = defineProps<{
@@ -58,9 +64,49 @@ const toolGroups = computed(() => {
   return groups
 })
 
-/** 点击系统功能：emoji 图标直接回传，与添加后列表显示一致 */
-function pickTool(tool: SystemTool) {
-  emit('select', { name: tool.name, target: tool.target, iconEmoji: tool.emoji, iconPath: '' })
+/** 系统功能图标缓存（key = toolKey(tool) → 图标相对路径） */
+const systemIcons = ref<Record<string, string>>({})
+
+function toolKey(tool: SystemTool): string {
+  return `${tool.target}|${tool.args || ''}|${tool.name}`
+}
+
+/** 打开对话框即后台预提取全部系统功能图标（确定性缓存命名，第二次秒回） */
+async function extractSystemIconsSilently() {
+  for (const tool of SYSTEM_TOOLS) {
+    const spec = toolIconSource(tool)
+    if (!spec || systemIcons.value[toolKey(tool)]) continue
+    try {
+      const p = await api.extract_system_icon(spec)
+      if (p) systemIcons.value[toolKey(tool)] = p
+    } catch {
+      // 忽略单个图标提取失败，界面兜底显示 emoji
+    }
+  }
+}
+
+/** 点击系统功能：真实图标回传（提取失败兜底 emoji） */
+async function pickTool(tool: SystemTool) {
+  const key = toolKey(tool)
+  const spec = toolIconSource(tool)
+  let iconPath = systemIcons.value[key] || ''
+  if (!iconPath && spec) {
+    try {
+      iconPath = await api.extract_system_icon(spec)
+      if (iconPath) systemIcons.value[key] = iconPath
+    } catch {
+      iconPath = ''
+    }
+  }
+  emit('select', {
+    name: tool.name,
+    target: tool.target,
+    args: tool.args,
+    type: 'system',
+    iconEmoji: iconPath ? '' : tool.emoji,
+    iconPath,
+    iconSource: iconPath ? spec : '',
+  })
   emit('close')
 }
 
@@ -111,8 +157,10 @@ function pickAppx(app: AppxAppInfo) {
   emit('select', {
     name: app.name,
     target: app.shell_uri,
+    type: 'appx',
     iconEmoji: '',
     iconPath: appxIcons.value[app.app_key] || '',
+    iconSource: '',
   })
   emit('close')
 }
@@ -129,6 +177,9 @@ function switchTab(tab: 'system' | 'appx') {
 if (activeTab.value === 'appx') {
   loadAppx()
 }
+
+// 系统功能图标后台预提取
+onMounted(extractSystemIconsSilently)
 </script>
 
 <template>
@@ -151,7 +202,7 @@ if (activeTab.value === 'appx') {
         <!-- 加载中 -->
         <div v-if="loading" class="picker-hint">正在枚举应用，首次约需几秒...</div>
 
-        <!-- 系统功能（emoji 图标） -->
+        <!-- 系统功能（真实系统图标，提取失败兜底 emoji） -->
         <template v-else-if="activeTab === 'system'">
           <div v-for="group in toolGroups" :key="group.name" class="tool-group">
             <div class="group-title">{{ group.name }}</div>
@@ -163,7 +214,8 @@ if (activeTab.value === 'appx') {
                 :title="tool.desc"
                 @click="pickTool(tool)"
               >
-                <span class="tool-emoji">{{ tool.emoji }}</span>
+                <img v-if="systemIcons[toolKey(tool)]" :src="resolveAssetUrl(systemIcons[toolKey(tool)])" class="tool-icon" alt="" />
+                <span v-else class="tool-emoji">{{ tool.emoji }}</span>
                 <span class="tool-name">{{ tool.name }}</span>
               </div>
             </div>

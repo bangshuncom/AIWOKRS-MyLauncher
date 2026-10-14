@@ -6,6 +6,7 @@ import { reactive } from 'vue'
 import type { AppConfig, Category, Entry, EntryType, Environment } from '@/types'
 import * as api from '@/api'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { SYSTEM_TOOLS, toolIconSource } from '@/data/systemTools'
 
 interface StoreState {
   loaded: boolean
@@ -255,6 +256,10 @@ export function applyViewModeToDescendants(parentId: string, viewMode: Category[
 }
 
 export async function deleteCategory(id: string, strategy: 'orphan' | 'delete' | 'move', targetId?: string) {
+  // 删除前的上下文：当前选中分类、被删分类的父级（选中项被删时回退到它）
+  const prevSelected = state.currentCategoryId
+  const fallbackParentId = getCategoryById(id)?.parent_id ?? null
+
   // 统一收集当前分类及所有子孙分类 ID
   const toProcess = new Set<string>([id])
   const collectChildren = (parentId: string) => {
@@ -264,6 +269,9 @@ export async function deleteCategory(id: string, strategy: 'orphan' | 'delete' |
     })
   }
   collectChildren(id)
+
+  // 真正会从分类树中消失的 ID（move 策略只删当前分类本身，子分类上提保留）
+  const removedIds = strategy === 'move' ? new Set<string>([id]) : toProcess
 
   if (strategy === 'delete') {
     // 删除分类和所有子分类，以及其下条目（联动清理条目资源）
@@ -278,6 +286,19 @@ export async function deleteCategory(id: string, strategy: 'orphan' | 'delete' |
     state.entries.forEach(e => {
       if (toProcess.has(e.category_id)) e.category_id = targetId
     })
+    // 只删当前分类本身：直属子分类上提一级挂到被删分类的父级，
+    // 否则它们的 parent_id 会指向已删除的分类而从前台导航消失（数据丢失）
+    const siblings = fallbackParentId
+      ? state.categories.filter(c => c.parent_id === fallbackParentId)
+      : state.categories.filter(c => c.parent_id === null)
+    let order = siblings.reduce((max, c) => Math.max(max, c.sort_order), 0)
+    state.categories.forEach(c => {
+      if (c.parent_id === id) {
+        c.parent_id = fallbackParentId
+        c.sort_order = ++order
+        c.is_top_level = fallbackParentId === null
+      }
+    })
     state.categories = state.categories.filter(c => c.id !== id)
     await api.save_categories(state.categories)
     await api.save_entries(state.entries)
@@ -291,7 +312,18 @@ export async function deleteCategory(id: string, strategy: 'orphan' | 'delete' |
     await api.save_entries(state.entries)
   }
 
-  // 切换到第一个可见分类（跳过隐藏分类；全隐藏时回退第一个顶级分类）
+  // 只在当前选中分类确实被删掉时才切换导航；否则保持原位
+  // （在侧栏右键删除别的子分类时，应继续停留在当前顶级分类，而不是跳到第一个分类）
+  const selectionRemoved = !prevSelected
+    || removedIds.has(prevSelected)
+    || !getCategoryById(prevSelected)
+  if (!selectionRemoved) return
+
+  // 优先回退到被删分类的父级（即所在顶级分类），否则回退第一个可见顶级分类
+  if (fallbackParentId && getCategoryById(fallbackParentId)) {
+    state.currentCategoryId = fallbackParentId
+    return
+  }
   const topCats = getTopCategories()
   const visibleTop = topCats.filter(c => !isCategoryHidden(c))
   const firstCat = visibleTop[0] || topCats[0]
@@ -462,7 +494,8 @@ export async function convertEntriesPathMode(ids: string[], targetMode: 'relativ
 }
 
 // 批量重新提取图标
-// 系统功能为 emoji 图标无需提取，跳过；其余类型调用后端按目标重新提取，
+// 系统功能：有 icon_source 的按来源重提取；旧 emoji 条目按清单反向匹配升级，
+// 都没有的跳过；其余类型调用后端按目标重新提取，
 // 成功后更新条目图标（type 统一记为 extracted——favicon 也存于 assets 内的文件资源）。
 // url 类型多源 favicon 链全部失败时保持原图标不变（跳过），不计失败。
 export async function refreshEntriesIcons(ids: string[]): Promise<{ success: number; failed: number; skipped: number; messages: string[] }> {
@@ -475,9 +508,33 @@ export async function refreshEntriesIcons(ids: string[]): Promise<{ success: num
     const idx = state.entries.findIndex(e => e.id === id)
     if (idx < 0) continue
     const entry = state.entries[idx]
-    // 系统功能使用 emoji 图标，无需提取
+
+    // 系统功能：icon_source 或清单反查（target + args 匹配）任一命中即可重提取
     if (entry.type === 'system') {
-      skipped++
+      let source = entry.icon_source?.trim() || ''
+      if (!source) {
+        const target = entry.relative_path?.trim() || ''
+        const tool = SYSTEM_TOOLS.find(
+          t => t.target === target && (t.args || '') === (entry.launch_args || '')
+        )
+        if (tool) source = toolIconSource(tool)
+      }
+      if (!source) {
+        skipped++
+        continue
+      }
+      try {
+        const p = await api.extract_system_icon(source, true)
+        state.entries[idx].icon = p
+          ? { type: 'extracted', source: p }
+          : { type: 'default', source: '' }
+        state.entries[idx].icon_source = source
+        bumpIconVersion(p)
+        success++
+      } catch (e) {
+        failed++
+        messages.push(`${entry.name}: ${e}`)
+      }
       continue
     }
 
@@ -788,6 +845,7 @@ export function createEntryDraft(categoryId: string, type: EntryType): Omit<Entr
     run_as_admin: false,
     url: '',
     icon: { type: 'default', source: '' },
+    icon_source: '',
     cover: { enabled: false, source: '' },
     tags: [],
     notes: '',
