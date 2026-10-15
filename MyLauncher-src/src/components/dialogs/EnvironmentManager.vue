@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { state, addEnvironment, updateEnvironment, deleteEnvironment, switchEnvironment } from '@/store'
 import type { Environment } from '@/types'
+
+// 顶部导航的环境切换已移除，此处是唯一的环境切换入口，
+// 因此在标题上显式标出当前环境，避免用户不知道自己身处哪个环境
+const currentEnvName = computed(
+  () => state.environments.find(e => e.id === state.currentEnvId)?.name ?? '（未选择）'
+)
 
 const editing = ref<Environment | null>(null)
 const isNew = ref(false)
@@ -88,7 +94,10 @@ function removeDriveMapping(letter: string) {
 
       <div class="dialog-body">
         <div class="env-list-section">
-          <div class="section-title">环境列表</div>
+          <div class="section-title">
+            环境列表
+            <span class="env-current-hint">当前：{{ currentEnvName }}</span>
+          </div>
           <div class="env-list">
             <div
               v-for="env in state.environments"
@@ -102,7 +111,13 @@ function removeDriveMapping(letter: string) {
                 <span class="env-desc">{{ env.description }}</span>
               </div>
               <div class="env-actions">
-                <button v-if="!env.is_current" class="btn btn-icon" title="设为当前" @click="set_current(env.id)">→</button>
+                <button
+                  v-if="!env.is_current"
+                  class="btn env-switch-btn"
+                  title="切换到此环境"
+                  @click="set_current(env.id)"
+                >切换到此环境</button>
+                <span v-else class="env-current-tag">使用中</span>
                 <button class="btn btn-icon btn-danger" title="删除" @click="remove(env.id)">🗑</button>
               </div>
             </div>
@@ -153,6 +168,14 @@ function removeDriveMapping(letter: string) {
 
 .env-list-section {
   margin-bottom: 20px;
+}
+
+/* 标题右侧标出当前环境 */
+.env-current-hint {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
 }
 
 .env-list {
@@ -209,7 +232,25 @@ function removeDriveMapping(letter: string) {
 
 .env-actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 切换按钮：带文字，比原来的裸箭头图标更好认 */
+.env-switch-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 当前环境标记（替代原来的切换按钮位） */
+.env-current-tag {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-bg);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
 }
 
 .env-add-btn {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { state, getVisibleTopCategories, getCategoryById, switchEnvironment, resolveAssetUrl } from '@/store'
+import { state, getVisibleTopCategories, getCategoryById, resolveAssetUrl } from '@/store'
 import CategoryIcon from '@/components/CategoryIcon.vue'
 import { onImgError } from '@/composables/useImageFallback'
 
@@ -113,11 +113,6 @@ function clearSearch() {
   searchQuery.value = ''
   emit('search', '')
 }
-
-// 环境切换
-async function switchEnv(envId: string) {
-  await switchEnvironment(envId)
-}
 </script>
 
 <template>
@@ -156,20 +151,8 @@ async function switchEnv(envId: string) {
         {{ cat.name }}</button>
     </div>
 
-    <!-- 工具栏 -->
+    <!-- 工具栏（环境切换已移至 左下角菜单 → 环境管理） -->
     <div class="nav-toolbar">
-      <!-- 环境切换 -->
-      <select
-        class="env-select"
-        :value="state.currentEnvId"
-        @change="switchEnv(($event.target as HTMLSelectElement).value)"
-        title="切换环境"
-      >
-        <option v-for="env in state.environments" :key="env.id" :value="env.id">
-          {{ env.name }}
-        </option>
-      </select>
-
       <!-- 搜索框 -->
       <input
         v-model="searchQuery"
@@ -327,34 +310,6 @@ async function switchEnv(envId: string) {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-}
-
-.env-select {
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card);
-  /* 文字与顶部导航同色（暗色主题下跟随变浅，修复黑字不明显） */
-  color: var(--color-text);
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-
-.env-select:hover {
-  border-color: var(--color-primary-light);
-}
-
-/* 下拉展开的选项列表跟随主题配色（暗色下黑底白字） */
-.env-select option {
-  background: var(--color-bg-card);
-  color: var(--color-text);
-}
-
-.env-select:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.12);
 }
 
 .search-input {

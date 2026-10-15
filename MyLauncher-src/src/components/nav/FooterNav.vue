@@ -60,12 +60,15 @@ function runMore(item: { label: string; icon: string; action: () => void }) {
 }
 
 // 菜单项定义（设置固定在最后一项）
+// 图标统一走「彩色 emoji 呈现」：像 U+1F5C2(🗂)、U+2699(⚙) 这类码点属于
+// Unicode 的「文本默认呈现」，必须追加 U+FE0F(VS16) 才会渲染成彩色，
+// 否则会退化成单色描边，和相邻原生彩色 emoji 混排时显得异常。
 const moreItems = [
   { label: '添加项目', icon: '➕', action: () => emit('add-entry') },
-  { label: '扫描文件夹', icon: '🗂', action: () => emit('scan-directory') },
+  { label: '扫描文件夹', icon: '📂', action: () => emit('scan-directory') },
   { label: '导入书签', icon: '🔖', action: () => emit('import-bookmarks') },
   { label: '环境管理', icon: '💻', action: () => emit('manage-environments') },
-  { label: '分类管理', icon: '🗂', action: () => emit('manage-categories') },
+  { label: '分类管理', icon: '🗂️', action: () => emit('manage-categories') },
   { label: '设置', icon: '⚙️', action: () => emit('open-settings') },
 ]
 </script>
