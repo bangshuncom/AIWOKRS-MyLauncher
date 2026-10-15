@@ -154,6 +154,10 @@ pub struct AppConfig {
     /// 瀑布流封面图最大高度（px），默认 480
     #[serde(default = "default_masonry_max_height")]
     pub masonry_max_height: u32,
+    /// 界面语言代码（lang/ 目录下的文件名，如 zh-CN / zh-TW / en-US），默认 zh-CN。
+    /// 空字符串表示未设置（老配置升级场景），前端按系统语言判定后回写。
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 pub(crate) fn default_logo_icon() -> String { "🪷".to_string() }
@@ -163,6 +167,7 @@ pub(crate) fn default_close_action() -> String { "tray".to_string() }
 pub(crate) fn default_theme() -> String { "system".to_string() }
 pub(crate) fn default_card_cover_ratio() -> String { "16:9".to_string() }
 pub(crate) fn default_masonry_max_height() -> u32 { 480 }
+pub(crate) fn default_language() -> String { "zh-CN".to_string() }
 
 /// 默认 favicon 获取源（三个 API 模板，按序尝试）
 pub(crate) fn default_favicon_api_sources() -> Vec<String> {

@@ -3,6 +3,10 @@ import { ref, computed, onMounted } from 'vue'
 import { state, saveSettings, resolveAssetUrl } from '@/store'
 import { scan_orphan_assets, clean_orphan_assets, set_autorun, get_autorun } from '@/api'
 import { useToast } from '@/composables/useToast'
+import { useI18n } from '@/composables/useI18n'
+import { setLocale } from '@/i18n'
+import { list_languages, open_lang_dir } from '@/api'
+import type { LangInfo } from '@/types'
 import IconPicker from '@/components/IconPicker.vue'
 
 const emit = defineEmits<{
@@ -12,11 +16,11 @@ const emit = defineEmits<{
 // ─── Tab 切换 ───
 type TabId = 'appearance' | 'behavior' | 'advanced' | 'maintenance'
 const activeTab = ref<TabId>('appearance')
-const tabs: { id: TabId; label: string; icon: string }[] = [
-  { id: 'appearance', label: '外观', icon: '◑' },
-  { id: 'behavior', label: '行为', icon: '⚙' },
-  { id: 'advanced', label: '高级', icon: '⚒' },
-  { id: 'maintenance', label: '维护', icon: '◐' },
+const tabs: { id: TabId; labelKey: string; icon: string }[] = [
+  { id: 'appearance', labelKey: 'settings.tab.appearance', icon: '◑' },
+  { id: 'behavior', labelKey: 'settings.tab.behavior', icon: '⚙' },
+  { id: 'advanced', labelKey: 'settings.tab.advanced', icon: '⚒' },
+  { id: 'maintenance', labelKey: 'settings.tab.maintenance', icon: '◐' },
 ]
 
 // 表单（从当前配置初始化）
@@ -51,6 +55,8 @@ onMounted(async () => {
   } catch {
     // 读取失败保持默认关闭
   }
+  // 拉取已安装语言列表（实时扫描 lang/ 目录）
+  await loadLanguages()
 })
 
 // Favicon 获取源默认模板（与 Rust default_favicon_api_sources 保持一致）
@@ -140,7 +146,7 @@ async function pickLogoImage() {
     form.value.logo_image = rel
     if (!form.value.logo_image_enabled) form.value.logo_image_enabled = true
   } catch (e) {
-    error.value = `图片导入失败: ${e}`
+    error.value = t('settings.logoImportFailed', { error: String(e) })
   }
 }
 
@@ -182,7 +188,7 @@ async function save() {
     try {
       await set_autorun(form.value.autorun, form.value.autorun_silent)
     } catch (e) {
-      error.value = `开机自启设置失败: ${e}`
+      error.value = t('settings.autorunFailed', { error: String(e) })
       saving.value = false
       return
     }
@@ -200,7 +206,7 @@ async function save() {
     })
     emit('close')
   } catch (e) {
-    error.value = `保存失败: ${e}`
+    error.value = t('settings.saveFailed', { error: String(e) })
   } finally {
     saving.value = false
   }
@@ -209,6 +215,40 @@ async function save() {
 // ─── 过期资源清理 ───
 
 const { showToast } = useToast()
+
+// ─── 界面语言 ───
+const { t } = useI18n()
+const languages = ref<LangInfo[]>([])
+const currentLangCode = ref(state.config.language || 'zh-CN')
+const switchingLang = ref(false)
+
+/** 拉取已安装语言列表（每次打开设置页/点击刷新时实时扫描） */
+async function loadLanguages() {
+  try {
+    languages.value = await list_languages()
+  } catch {
+    languages.value = []
+  }
+}
+
+/** 切换语言：加载新消息表 → 整体替换 → 持久化到 config.json */
+async function changeLanguage(code: string) {
+  if (!code || code === currentLangCode.value) return
+  switchingLang.value = true
+  try {
+    const ok = await setLocale(code)
+    if (ok) {
+      await saveSettings({ language: code })
+      currentLangCode.value = code
+    } else {
+      error.value = t('settings.language.switchFailed', { error: code })
+    }
+  } catch (e) {
+    error.value = t('settings.language.switchFailed', { error: String(e) })
+  } finally {
+    switchingLang.value = false
+  }
+}
 
 // 扫描/清理进行中
 const cleaning = ref(false)
@@ -231,7 +271,7 @@ async function scanAssets() {
     const r = await scan_orphan_assets()
     scanResult.value = { count: r.orphan_count, sizeText: formatBytes(r.orphan_bytes) }
   } catch (e) {
-    error.value = `扫描失败: ${e}`
+    error.value = t('settings.scanFailed', { error: String(e) })
   } finally {
     cleaning.value = false
   }
@@ -240,17 +280,17 @@ async function scanAssets() {
 // 清理过期资源（先确认再执行，移入回收站）
 async function cleanAssets() {
   if (!scanResult.value || scanResult.value.count === 0) return
-  if (!confirm(`确认清理 ${scanResult.value.count} 个过期文件（${scanResult.value.sizeText}）？\n文件将移入回收站，如误删可从回收站还原。`)) return
+  if (!confirm(t('settings.cleanConfirm', { count: scanResult.value.count, size: scanResult.value.sizeText }))) return
   error.value = ''
   cleaning.value = true
   try {
     const r = await clean_orphan_assets()
-    showToast(`已清理 ${r.deleted_count} 个文件，释放 ${formatBytes(r.deleted_bytes)}`)
+    showToast(t('settings.cleanDone', { count: r.deleted_count, size: formatBytes(r.deleted_bytes) }))
     // 清理后重新扫描显示最新状态
     const s = await scan_orphan_assets()
     scanResult.value = { count: s.orphan_count, sizeText: formatBytes(s.orphan_bytes) }
   } catch (e) {
-    error.value = `清理失败: ${e}`
+    error.value = t('settings.cleanFailed', { error: String(e) })
   } finally {
     cleaning.value = false
   }
@@ -262,7 +302,7 @@ async function cleanAssets() {
   <div class="dialog-overlay settings-overlay" @click.self="!saving && $emit('close')">
     <div class="dialog settings-dialog">
       <div class="dialog-header">
-        <span>设置</span>
+        <span>{{ t('settings.title') }}</span>
         <button class="btn btn-icon" @click="$emit('close')">✕</button>
       </div>
 
@@ -276,18 +316,41 @@ async function cleanAssets() {
           @click="activeTab = tab.id"
         >
           <span class="tab-icon">{{ tab.icon }}</span>
-          <span class="tab-label">{{ tab.label }}</span>
+          <span class="tab-label">{{ t(tab.labelKey) }}</span>
         </button>
       </div>
 
       <div class="dialog-body">
         <!-- ══════════ 外观 ══════════ -->
         <template v-if="activeTab === 'appearance'">
-          <!-- LOGO 设置 -->
-          <div class="section-title">LOGO 设置</div>
+          <!-- 界面语言 -->
+          <div class="section-title">{{ t('settings.language') }}</div>
           <div class="setting-group">
             <div class="form-row">
-              <label class="form-label">LOGO 图标</label>
+              <label class="form-label">{{ t('settings.language') }}</label>
+              <div class="form-control lang-row">
+                <select
+                  class="select"
+                  :value="currentLangCode"
+                  :disabled="switchingLang"
+                  @change="changeLanguage(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="lang in languages" :key="lang.code" :value="lang.code" :disabled="!lang.valid">
+                    {{ lang.name }}{{ lang.is_default ? `（${t('settings.language.default')}）` : '' }}{{ lang.valid ? ` · ${t('settings.language.completeness', { percent: lang.completeness })}` : t('settings.language.corrupted') }}
+                  </option>
+                </select>
+                <button class="btn" :disabled="switchingLang" @click="loadLanguages">{{ t('settings.language.refresh') }}</button>
+                <button class="btn" @click="open_lang_dir()">{{ t('settings.language.openFolder') }}</button>
+              </div>
+            </div>
+            <div class="form-hint">{{ t('settings.language.hint') }}</div>
+          </div>
+
+          <!-- LOGO 设置 -->
+          <div class="section-title">{{ t('settings.logo') }}</div>
+          <div class="setting-group">
+            <div class="form-row">
+              <label class="form-label">{{ t('settings.logoIcon') }}</label>
               <div class="form-control">
                 <IconPicker
                   :current-type="form.logo_icon_type"
@@ -300,24 +363,24 @@ async function cleanAssets() {
               </div>
             </div>
             <div class="form-row">
-              <label class="form-label">LOGO 文字</label>
+              <label class="form-label">{{ t('settings.logoText') }}</label>
               <div class="form-control">
                 <input v-model="form.logo_text" class="input" placeholder="MyLauncher" maxlength="20" />
-                <div class="form-hint">留空恢复默认 "MyLauncher"</div>
+                <div class="form-hint">{{ t('settings.logoTextHint') }}</div>
               </div>
             </div>
             <div class="form-row">
-              <label class="form-label">LOGO 图片</label>
+              <label class="form-label">{{ t('settings.logoImage') }}</label>
               <div class="form-control">
                 <div class="logo-image-row">
-                  <button class="btn" @click="pickLogoImage">📁 选择图片</button>
-                  <button v-if="form.logo_image" class="btn btn-danger" @click="removeLogoImage">移除</button>
+                  <button class="btn" @click="pickLogoImage">📁 {{ t('settings.pickImage') }}</button>
+                  <button v-if="form.logo_image" class="btn btn-danger" @click="removeLogoImage">{{ t('common.remove') }}</button>
                   <label class="checkbox-label">
                     <input v-model="form.logo_image_enabled" type="checkbox" :disabled="!form.logo_image" />
-                    启用图片作为 LOGO
+                    {{ t('settings.logoImageEnabled') }}
                   </label>
                 </div>
-                <div class="form-hint">启用后 LOGO 区域整体显示为图片；未启用则显示图标 + 文字</div>
+                <div class="form-hint">{{ t('settings.logoImageHint') }}</div>
                 <!-- 预览（单图铺满，模拟 LOGO 区域实际效果） -->
                 <div v-if="form.logo_image" class="logo-preview" :class="{ disabled: !form.logo_image_enabled }">
                   <div class="logo-preview-box">
@@ -330,18 +393,18 @@ async function cleanAssets() {
           </div>
 
           <!-- 自定义 emoji 图标库 -->
-          <div class="section-title">自定义图标库</div>
+          <div class="section-title">{{ t('settings.customEmojiLib') }}</div>
           <div class="setting-group">
-            <div class="custom-emoji-hint">从别处复制 emoji，粘贴到下方输入框即可添加到自定义标签页</div>
+            <div class="custom-emoji-hint">{{ t('settings.customEmojiHint') }}</div>
             <div class="custom-emoji-input-row">
               <input
                 v-model="customEmojiInput"
                 class="input"
-                placeholder="在此粘贴 emoji"
+                :placeholder="t('settings.emojiPlaceholder')"
                 @keydown.enter.prevent="addCustomEmoji"
               />
-              <button class="btn" @click="pasteFromClipboard">📋 粘贴</button>
-              <button class="btn btn-primary" @click="addCustomEmoji">添加</button>
+              <button class="btn" @click="pasteFromClipboard">📋 {{ t('settings.paste') }}</button>
+              <button class="btn btn-primary" @click="addCustomEmoji">{{ t('settings.add') }}</button>
             </div>
             <div v-if="form.custom_emojis.length > 0" class="custom-emoji-list">
               <div
@@ -354,71 +417,71 @@ async function cleanAssets() {
                 <button class="custom-emoji-remove" @click.stop="removeCustomEmoji(i)">✕</button>
               </div>
             </div>
-            <div v-else class="custom-emoji-empty">暂无自定义 emoji</div>
+            <div v-else class="custom-emoji-empty">{{ t('settings.noCustomEmoji') }}</div>
           </div>
 
           <!-- 列表展示 -->
-          <div class="section-title">列表展示</div>
+          <div class="section-title">{{ t('settings.listDisplay') }}</div>
           <div class="setting-group">
             <div class="form-row">
-              <label class="form-label">竖向卡片封面比例</label>
+              <label class="form-label">{{ t('settings.coverRatio') }}</label>
               <select v-model="form.card_cover_ratio" class="select">
                 <option v-for="r in coverRatioOptions" :key="r" :value="r">{{ r }}</option>
               </select>
             </div>
             <div class="form-row">
-              <label class="form-label">瀑布流封面最大高度</label>
+              <label class="form-label">{{ t('settings.masonryMaxHeight') }}</label>
               <input v-model.number="form.masonry_max_height" type="number" min="120" max="960" step="10" class="input" />
             </div>
-            <div class="form-hint">竖向卡片封面按所选比例显示；瀑布流中单张封面最高不超过设定高度（px）。</div>
+            <div class="form-hint">{{ t('settings.listDisplayHint') }}</div>
           </div>
         </template>
 
         <!-- ══════════ 行为 ══════════ -->
         <template v-if="activeTab === 'behavior'">
           <!-- 关闭按钮行为 -->
-          <div class="section-title">关闭按钮</div>
+          <div class="section-title">{{ t('settings.closeAction') }}</div>
           <div class="setting-group">
             <div class="radio-group">
               <label class="radio-option" :class="{ active: form.close_action === 'tray' }">
                 <input v-model="form.close_action" type="radio" value="tray" />
                 <span class="radio-text">
-                  <span class="radio-title">最小化到托盘</span>
-                  <span class="radio-desc">点击关闭按钮时隐藏窗口，程序保留在系统托盘</span>
+                  <span class="radio-title">{{ t('settings.closeToTray') }}</span>
+                  <span class="radio-desc">{{ t('settings.closeToTrayDesc') }}</span>
                 </span>
               </label>
               <label class="radio-option" :class="{ active: form.close_action === 'close' }">
                 <input v-model="form.close_action" type="radio" value="close" />
                 <span class="radio-text">
-                  <span class="radio-title">直接退出程序</span>
-                  <span class="radio-desc">点击关闭按钮时彻底关闭 MyLauncher</span>
+                  <span class="radio-title">{{ t('settings.closeDirectly') }}</span>
+                  <span class="radio-desc">{{ t('settings.closeDirectlyDesc') }}</span>
                 </span>
               </label>
             </div>
           </div>
 
           <!-- 开机自启 -->
-          <div class="section-title">开机自启</div>
+          <div class="section-title">{{ t('settings.autorun') }}</div>
           <div class="setting-group">
             <label class="checkbox-label">
               <input v-model="form.autorun" type="checkbox" />
-              开机自动启动 MyLauncher
+              {{ t('settings.autorunItem') }}
             </label>
             <label class="checkbox-label autorun-sub" :class="{ disabled: !form.autorun }">
               <input v-model="form.autorun_silent" type="checkbox" :disabled="!form.autorun" />
-              自启时不显示主界面，隐藏在系统托盘
+              {{ t('settings.autorunSilent') }}
             </label>
-            <div class="form-hint">写入当前用户注册表 Run 键，无需管理员权限；程序移动位置后会自动校正路径</div>
+            <div class="form-hint">{{ t('settings.autorunHint') }}</div>
           </div>
         </template>
 
         <!-- ══════════ 高级 ══════════ -->
         <template v-if="activeTab === 'advanced'">
           <!-- Favicon 获取源 -->
-          <div class="section-title">Favicon 获取源</div>
+          <div class="section-title">{{ t('settings.favicon') }}</div>
           <div class="setting-group">
             <div class="form-hint favicon-hint">
-              获取网址图标使用的 API 模板，一行一个，按顺序尝试（任一成功即用）。占位符：{url} 完整链接、{domain} 域名、{scheme} 协议。API 失效时可自行替换
+              {{ t('settings.faviconHint') }}
             </div>
             <textarea
               v-model="form.favicon_api_sources_text"
@@ -428,7 +491,7 @@ async function cleanAssets() {
               placeholder="https://a.favicon.im/{url}?larger=true"
             ></textarea>
             <div class="favicon-actions">
-              <button class="btn" @click="resetFaviconApiSources">恢复默认</button>
+              <button class="btn" @click="resetFaviconApiSources">{{ t('settings.faviconReset') }}</button>
             </div>
           </div>
         </template>
@@ -436,14 +499,14 @@ async function cleanAssets() {
         <!-- ══════════ 维护 ══════════ -->
         <template v-if="activeTab === 'maintenance'">
           <!-- 过期资源清理 -->
-          <div class="section-title">资源清理</div>
+          <div class="section-title">{{ t('settings.maintenance') }}</div>
           <div class="setting-group">
             <div class="form-hint clean-hint">
-              清理图标、封面等资源中未被任何条目、分类或 LOGO 引用的过期文件（如目录扫描、书签导入后未使用的图标），文件将移入回收站
+              {{ t('settings.cleanHint') }}
             </div>
             <div class="clean-actions">
               <button class="btn" :disabled="cleaning" @click="scanAssets">
-                {{ cleaning ? '处理中...' : '🔍 扫描' }}
+                {{ cleaning ? t('common.processing') : '🔍 ' + t('settings.scan') }}
               </button>
               <button
                 v-if="scanResult && scanResult.count > 0"
@@ -451,15 +514,15 @@ async function cleanAssets() {
                 :disabled="cleaning"
                 @click="cleanAssets"
               >
-                🗑 清理
+                🗑 {{ t('settings.clean') }}
               </button>
             </div>
             <div v-if="scanResult" class="clean-result" :class="{ empty: scanResult.count === 0 }">
               <template v-if="scanResult.count > 0">
-                发现 <b>{{ scanResult.count }}</b> 个过期文件，共 <b>{{ scanResult.sizeText }}</b>
+                {{ t('settings.cleanResult', { count: scanResult.count, size: scanResult.sizeText }) }}
               </template>
               <template v-else>
-                没有过期文件，资源均已使用
+                {{ t('settings.cleanEmpty') }}
               </template>
             </div>
           </div>
@@ -468,8 +531,8 @@ async function cleanAssets() {
 
       <div class="dialog-footer">
         <span v-if="error" class="error-text">{{ error }}</span>
-        <button class="btn" :disabled="saving" @click="$emit('close')">取消</button>
-        <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? '保存中...' : '保存' }}</button>
+        <button class="btn" :disabled="saving" @click="$emit('close')">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? t('common.saving') : t('common.save') }}</button>
       </div>
     </div>
   </div>
@@ -532,6 +595,19 @@ async function cleanAssets() {
 
 .setting-group {
   margin-bottom: 20px;
+}
+
+/* ─── 界面语言行 ─── */
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lang-row .select {
+  flex: 1;
+  min-width: 160px;
 }
 
 .form-control {

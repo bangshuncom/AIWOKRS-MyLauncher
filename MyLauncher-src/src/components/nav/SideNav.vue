@@ -3,12 +3,15 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { state, getCategoryById, isCategoryHidden } from '@/store'
 import type { Category } from '@/types'
 import CategoryIcon from '@/components/CategoryIcon.vue'
+import { useI18n } from '@/composables/useI18n'
 
 const emit = defineEmits<{
   (e: 'edit-category', catId: string): void
   (e: 'add-sub-category', parentId: string | null): void
   (e: 'delete-category', catId: string): void
 }>()
+
+const { t } = useI18n()
 
 // 展开状态
 const expandedIds = ref<Set<string>>(new Set())
@@ -210,7 +213,7 @@ function closeContextMenu() {
     </template>
 
     <!-- 当前一级分类下无子分类时的提示 -->
-    <div v-if="subCategories.length === 0" class="side-nav-empty">暂无子分类</div>
+    <div v-if="subCategories.length === 0" class="side-nav-empty">{{ t('nav.side.empty') }}</div>
 
     <!-- 右键菜单 -->
     <div
@@ -219,10 +222,10 @@ function closeContextMenu() {
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
-      <div class="context-menu-item" @click="handleContextAction('add-sub')">新建子分类</div>
-      <div class="context-menu-item" @click="handleContextAction('rename')">编辑</div>
+      <div class="context-menu-item" @click="handleContextAction('add-sub')">{{ t('nav.side.newSub') }}</div>
+      <div class="context-menu-item" @click="handleContextAction('rename')">{{ t('nav.side.rename') }}</div>
       <div class="context-menu-divider"></div>
-      <div class="context-menu-item danger" @click="handleContextAction('delete')">删除</div>
+      <div class="context-menu-item danger" @click="handleContextAction('delete')">{{ t('nav.side.delete') }}</div>
     </div>
   </div>
 </template>

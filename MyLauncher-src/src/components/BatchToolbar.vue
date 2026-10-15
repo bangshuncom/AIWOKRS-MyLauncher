@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import { state, getCurrentEntries, toggleBatchMode, selectAllCurrent, invertSelection, clearSelection, deleteEntries, moveEntriesToCategory, convertEntriesPathMode, refreshEntriesIcons, launchEntries } from '@/store'
 import BatchIconProgressDialog from '@/components/dialogs/BatchIconProgressDialog.vue'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
 
 const selectedCount = computed(() => state.selectedIds.size)
 const currentEntries = getCurrentEntries()
@@ -30,7 +33,7 @@ const categoryOptions = computed(() => {
 
 async function batchDelete() {
   if (selectedCount.value === 0) return
-  if (!confirm(`确认删除 ${selectedCount.value} 个条目？`)) return
+  if (!confirm(t('batch.deleteConfirm', { count: selectedCount.value }))) return
   const ids = Array.from(state.selectedIds)
   await deleteEntries(ids)
   state.selectedIds.clear()
@@ -54,8 +57,8 @@ async function batchLaunch() {
   const ids = Array.from(state.selectedIds)
   const result = await launchEntries(ids)
   convertMsg.value = result.failed > 0
-    ? `成功 ${result.success} 项，失败 ${result.failed} 项${result.skipped > 0 ? `，跳过 ${result.skipped} 项` : ''}：\n${result.messages.join('\n')}`
-    : `已启动 ${result.success} 项${result.skipped > 0 ? `，跳过 ${result.skipped} 项` : ''}`
+    ? `${t('batch.launchPartial', { success: result.success, failed: result.failed })}${result.skipped > 0 ? t('batch.skippedCount', { count: result.skipped }) : ''}：\n${result.messages.join('\n')}`
+    : `${t('batch.launchSuccess', { count: result.success })}${result.skipped > 0 ? t('batch.skippedCount', { count: result.skipped }) : ''}`
   converting.value = false
   exitBatchMode()
   setTimeout(() => { convertMsg.value = '' }, 3000)
@@ -67,7 +70,7 @@ async function batchConvertPath(targetMode: 'relative' | 'absolute') {
   convertMsg.value = ''
   const ids = Array.from(state.selectedIds)
   const result = await convertEntriesPathMode(ids, targetMode)
-  showResult(`所选条目均为${targetMode === 'relative' ? '相对' : '绝对'}路径，无需转换`, result)
+  showResult(targetMode === 'relative' ? t('batch.allSkippedRelative') : t('batch.allSkippedAbsolute'), result)
   converting.value = false
   exitBatchMode()
 }
@@ -85,7 +88,7 @@ async function batchRefreshIcons() {
   convertMsg.value = ''
   const ids = Array.from(state.selectedIds)
   const result = await refreshEntriesIcons(ids)
-  showResult('所选条目均无需重新提取', result)
+  showResult(t('batch.allSkippedIcons'), result)
   converting.value = false
   exitBatchMode()
 }
@@ -99,11 +102,11 @@ function onBatchIconDialogClosed() {
 /** 统一展示批量操作结果（3 秒后消失） */
 function showResult(allSkippedText: string, result: { success: number; failed: number; skipped: number; messages: string[] }) {
   if (result.failed > 0) {
-    convertMsg.value = `成功 ${result.success} 项，跳过 ${result.skipped} 项，失败 ${result.failed} 项：\n${result.messages.join('\n')}`
+    convertMsg.value = `${t('batch.launchPartial', { success: result.success, failed: result.failed })}${t('batch.skippedCount', { count: result.skipped })}：\n${result.messages.join('\n')}`
   } else if (result.success === 0 && result.skipped > 0) {
-    convertMsg.value = `${allSkippedText}（${result.skipped} 项）`
+    convertMsg.value = `${allSkippedText}${t('batch.skippedCount', { count: result.skipped })}`
   } else {
-    convertMsg.value = `已处理 ${result.success} 项，跳过 ${result.skipped} 项`
+    convertMsg.value = t('batch.processed', { count: result.success, skipped: result.skipped })
   }
   setTimeout(() => { convertMsg.value = '' }, 3000)
 }
@@ -116,27 +119,27 @@ function exitBatchMode() {
 <template>
   <div class="batch-toolbar">
     <div class="batch-left">
-      <button class="btn" @click="selectAllCurrent(currentEntries)">全选</button>
-      <button class="btn" @click="invertSelection(currentEntries)">反选</button>
-      <button class="btn" @click="clearSelection">清空选择</button>
-      <span class="batch-count">已选择 {{ selectedCount }} 项</span>
+      <button class="btn" @click="selectAllCurrent(currentEntries)">{{ t('common.all') }}</button>
+      <button class="btn" @click="invertSelection(currentEntries)">{{ t('common.invert') }}</button>
+      <button class="btn" @click="clearSelection">{{ t('common.clearSelection') }}</button>
+      <span class="batch-count">{{ t('batch.selected', { count: selectedCount }) }}</span>
     </div>
     <div class="batch-right">
       <select class="batch-select" @change="batchMove(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
-        <option value="">移动到分类...</option>
+        <option value="">{{ t('batch.moveTo') }}</option>
         <option v-for="cat in categoryOptions" :key="cat.id" :value="cat.id">
           {{ '　'.repeat(cat.depth) }}{{ cat.depth > 0 ? '└ ' : '' }}{{ cat.name }}
         </option>
       </select>
       <select class="batch-select" @change="batchConvertPath(($event.target as HTMLSelectElement).value as 'relative' | 'absolute'); ($event.target as HTMLSelectElement).value = ''" :disabled="converting || selectedCount === 0">
-        <option value="">转换路径模式...</option>
-        <option value="relative">转为相对路径</option>
-        <option value="absolute">转为绝对路径</option>
+        <option value="">{{ t('batch.convertPath') }}</option>
+        <option value="relative">{{ t('batch.toRelative') }}</option>
+        <option value="absolute">{{ t('batch.toAbsolute') }}</option>
       </select>
-      <button class="btn" @click="batchLaunch" :disabled="converting || selectedCount === 0">▶ 批量启动</button>
-      <button class="btn" @click="batchRefreshIcons" :disabled="converting || selectedCount === 0">🔄 重置图标</button>
-      <button class="btn btn-danger" @click="batchDelete" :disabled="selectedCount === 0">删除</button>
-      <button class="btn" @click="exitBatchMode">退出批量</button>
+      <button class="btn" @click="batchLaunch" :disabled="converting || selectedCount === 0">▶ {{ t('batch.launch') }}</button>
+      <button class="btn" @click="batchRefreshIcons" :disabled="converting || selectedCount === 0">🔄 {{ t('batch.refreshIcons') }}</button>
+      <button class="btn btn-danger" @click="batchDelete" :disabled="selectedCount === 0">{{ t('batch.delete') }}</button>
+      <button class="btn" @click="exitBatchMode">{{ t('batch.exit') }}</button>
     </div>
     <div v-if="convertMsg" class="batch-convert-msg">{{ convertMsg }}</div>
 

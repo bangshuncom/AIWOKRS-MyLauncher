@@ -86,6 +86,53 @@ export interface AppConfig {
   card_cover_ratio: string
   /** 瀑布流封面图最大高度（px），默认 480 */
   masonry_max_height: number
+  /** 界面语言代码（lang/ 目录下的文件名，如 zh-CN / zh-TW / en-US），空表示未设置 */
+  language: string
+}
+
+/** 语言文件 meta 信息（lang/*.json 文件头） */
+export interface LangMeta {
+  /** 显示名（如 "简体中文" / "English"） */
+  name: string
+  /** 语言自称 */
+  native_name: string
+  /** 英文名 */
+  english_name: string
+  /** 作者 */
+  author: string
+  /** 模板版本（与内置模板比对，提示补充新增 key） */
+  template_version: string
+}
+
+/** 语言列表条目（list_languages 返回，设置页下拉展示用） */
+export interface LangInfo {
+  /** 语言代码（文件名去扩展名） */
+  code: string
+  /** 显示名（meta.name 为空时回落 code） */
+  name: string
+  /** 语言自称 */
+  native_name: string
+  /** 英文名 */
+  english_name: string
+  /** 是否内置默认语言（三种模板之一） */
+  is_default: boolean
+  /** 文件是否可解析（损坏时置灰不可选） */
+  valid: boolean
+  /** 相对权威 key 源（zh-CN）的完成度 0-100 */
+  completeness: number
+  /** 已翻译的 key 数 */
+  key_count: number
+  /** 缺失的 key 数 */
+  missing_count: number
+}
+
+/** 单个语言文件的完整内容（read_language 返回） */
+export interface LangFile {
+  code: string
+  /** 显示名 */
+  name: string
+  /** 扁平消息表（点分层 key → 译文） */
+  messages: Record<string, string>
 }
 
 /** 开机自启状态（读注册表实际值） */

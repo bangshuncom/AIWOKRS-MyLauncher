@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { ref } from 'vue'
 import { useDismissable } from '@/composables/useDismissable'
+import { useI18n } from '@/composables/useI18n'
 import { state, setTheme } from '@/store'
 import type { AppConfig } from '@/types'
 
@@ -21,13 +22,15 @@ const emit = defineEmits<{
   (e: 'open-settings'): void
 }>()
 
+const { t } = useI18n()
+
 // ─── 主题切换（明/暗/随系统三态循环） ───
 // 图标用文本字符（非 emoji），与视图切换按钮字符行高一致，视觉对齐
 const themeOrder: AppConfig['theme'][] = ['light', 'dark', 'system']
-const themeMeta: Record<AppConfig['theme'], { icon: string; label: string; next: string }> = {
-  light: { icon: '☀', label: '明亮模式', next: '切换为暗黑模式' },
-  dark: { icon: '☾', label: '暗黑模式', next: '切换为随系统' },
-  system: { icon: '◐', label: '随系统', next: '切换为明亮模式' },
+const themeMeta: Record<AppConfig['theme'], { icon: string; labelKey: string; nextKey: string }> = {
+  light: { icon: '☀', labelKey: 'nav.footer.theme.light', nextKey: 'nav.footer.theme.nextToDark' },
+  dark: { icon: '☾', labelKey: 'nav.footer.theme.dark', nextKey: 'nav.footer.theme.nextToSystem' },
+  system: { icon: '◐', labelKey: 'nav.footer.theme.system', nextKey: 'nav.footer.theme.nextToLight' },
 }
 const currentTheme = computed(() => {
   const t = state.config.theme
@@ -43,18 +46,18 @@ function cycleTheme() {
 
 // 视图模式选项
 const viewModes = [
-  { id: 'vertical_card', icon: '▦', label: '竖向卡片' },
-  { id: 'horizontal_card', icon: '▭', label: '横向卡片' },
-  { id: 'icon_grid', icon: '⊞', label: '图标平铺' },
-  { id: 'table', icon: '☰', label: '表格列表' },
-  { id: 'waterfall', icon: '⬓', label: '瀑布流' },
+  { id: 'vertical_card', icon: '▦', labelKey: 'nav.footer.viewMode.verticalCard' },
+  { id: 'horizontal_card', icon: '▭', labelKey: 'nav.footer.viewMode.horizontalCard' },
+  { id: 'icon_grid', icon: '⊞', labelKey: 'nav.footer.viewMode.iconGrid' },
+  { id: 'table', icon: '☰', labelKey: 'nav.footer.viewMode.table' },
+  { id: 'waterfall', icon: '⬓', labelKey: 'nav.footer.viewMode.waterfall' },
 ]
 
 // 菜单展开状态
 const moreMenuRef = ref<HTMLElement | null>(null)
 const { isOpen: moreMenuOpen, toggle: toggleMoreMenu, close: closeMoreMenu } = useDismissable(moreMenuRef)
 
-function runMore(item: { label: string; icon: string; action: () => void }) {
+function runMore(item: { labelKey: string; icon: string; action: () => void }) {
   closeMoreMenu()
   item.action()
 }
@@ -64,12 +67,12 @@ function runMore(item: { label: string; icon: string; action: () => void }) {
 // Unicode 的「文本默认呈现」，必须追加 U+FE0F(VS16) 才会渲染成彩色，
 // 否则会退化成单色描边，和相邻原生彩色 emoji 混排时显得异常。
 const moreItems = [
-  { label: '添加项目', icon: '➕', action: () => emit('add-entry') },
-  { label: '扫描文件夹', icon: '📂', action: () => emit('scan-directory') },
-  { label: '导入书签', icon: '🔖', action: () => emit('import-bookmarks') },
-  { label: '环境管理', icon: '💻', action: () => emit('manage-environments') },
-  { label: '分类管理', icon: '🗂️', action: () => emit('manage-categories') },
-  { label: '设置', icon: '⚙️', action: () => emit('open-settings') },
+  { labelKey: 'nav.footer.addEntry', icon: '➕', action: () => emit('add-entry') },
+  { labelKey: 'nav.footer.scanFolder', icon: '📂', action: () => emit('scan-directory') },
+  { labelKey: 'nav.footer.importBookmarks', icon: '🔖', action: () => emit('import-bookmarks') },
+  { labelKey: 'nav.footer.manageEnvironments', icon: '💻', action: () => emit('manage-environments') },
+  { labelKey: 'nav.footer.manageCategories', icon: '🗂️', action: () => emit('manage-categories') },
+  { labelKey: 'nav.footer.settings', icon: '⚙️', action: () => emit('open-settings') },
 ]
 </script>
 
@@ -86,13 +89,13 @@ const moreItems = [
           @click="runMore(item)"
         >
           <span class="menu-icon">{{ item.icon }}</span>
-          <span>{{ item.label }}</span>
+          <span>{{ t(item.labelKey) }}</span>
         </button>
       </div>
       <!-- 菜单按钮 -->
       <button class="more-btn" :class="{ open: moreMenuOpen }" @click.stop="toggleMoreMenu">
         <span class="more-btn-icon">☰</span>
-        <span class="more-btn-label">菜单</span>
+        <span class="more-btn-label">{{ t('app.menu') }}</span>
       </button>
     </div>
 
@@ -104,7 +107,7 @@ const moreItems = [
           :key="mode.id"
           class="view-mode-btn"
           :class="{ active: props.viewMode === mode.id }"
-          :title="mode.label"
+          :title="t(mode.labelKey)"
           @click="emit('switch-view', mode.id)"
         >{{ mode.icon }}</button>
       </div>
@@ -112,7 +115,7 @@ const moreItems = [
       <!-- 主题切换（明/暗/随系统循环） -->
       <button
         class="view-mode-btn theme-btn"
-        :title="`${themeMetaInfo.label}（点击${themeMetaInfo.next}）`"
+        :title="`${t(themeMetaInfo.labelKey)}（${t(themeMetaInfo.nextKey)}）`"
         @click="cycleTheme"
       >{{ themeMetaInfo.icon }}</button>
     </div>

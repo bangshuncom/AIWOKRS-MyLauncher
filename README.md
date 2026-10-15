@@ -21,6 +21,7 @@ MyLauncher 是一款 Windows 桌面应用，帮你把散落在各个磁盘和目
 - **系统托盘** — 关闭窗口隐藏到托盘，双击恢复
 - **开机自启** — 支持静默启动（开机不弹窗，只留托盘图标）
 - **明暗主题** — 明亮 / 暗黑 / 跟随系统
+- **多语言界面** — 内置简体中文 / 繁体中文 / English，设置中一键切换；lang 文件夹内可参考模板自行创建新语言
 - **过期资源清理** — 删除条目后自动清理无人引用的图标和封面（移入回收站，可还原）
 
 ## 截图
@@ -148,9 +149,14 @@ MyLauncher-src/
 │   ├── composables/              # Vue 组合式函数（对话框/启动/拖拽/右键菜单等）
 │   ├── utils/                    # 纯函数（条目展示取值、格式化等）
 │   ├── data/                     # 静态数据（emoji、系统功能列表）
+│   ├── i18n/                     # 多语言运行时（locale/messages、t()、回退链）
 │   └── styles/                   # 全局样式
 │
 └── src-tauri/                    # Rust 后端
+    ├── lang/                     # 内置语言模板（编译进二进制，首启释放到 <exe>/lang/）
+    │   ├── zh-CN.json            # 简体中文（权威 key 源，兜底语言）
+    │   ├── zh-TW.json            # 繁体中文
+    │   └── en-US.json            # English
     └── src/
         ├── lib.rs                # 模块声明 + 应用入口（托盘、命令注册）
         ├── models.rs / defaults.rs
@@ -158,7 +164,8 @@ MyLauncher-src/
         ├── icons.rs / icons_refresh.rs / icons_system.rs
         ├── steam.rs / import.rs
         ├── favicon.rs / bookmarks.rs / assets.rs
-        └── autorun.rs
+        ├── autorun.rs
+        └── lang.rs               # 多语言：释放/扫描/读取/打开目录
 ```
 
 ## 使用技巧
@@ -185,6 +192,17 @@ data/
 ```
 
 图标和封面保存在 `assets/` 文件夹下。
+
+界面语言文件保存在 `lang/` 文件夹下（首次启动自动释放内置的简体中文 / 繁体中文 / English 三个模板）。
+
+## 新增界面语言
+
+1. 打开程序目录下的 `lang/` 文件夹（设置 → 外观 → 界面语言 → 打开语言文件夹）
+2. 复制任一语言文件（推荐 `zh-CN.json`，它是权威 key 源），重命名为目标语言代码，如 `ja-JP.json`
+3. 用文本编辑器修改 `meta` 中的显示名，并逐条翻译 `messages` 里的内容
+4. 回到设置 → 外观 → 界面语言，点「刷新列表」，下拉选择新语言即生效
+
+> key 规范为 `域.组件.语义`（如 `dialog.entryEditor.saveBtn`）；不必一次翻译全——缺失的 key 会自动回退到简体中文，设置页会显示该语言的完成度百分比。
 
 ## 绿色便携
 

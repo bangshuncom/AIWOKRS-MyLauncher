@@ -3,11 +3,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { state, getVisibleTopCategories, getCategoryById, resolveAssetUrl } from '@/store'
 import CategoryIcon from '@/components/CategoryIcon.vue'
 import { onImgError } from '@/composables/useImageFallback'
+import { useI18n } from '@/composables/useI18n'
 
 const emit = defineEmits<{
   (e: 'search', q: string): void
   (e: 'open-settings'): void
 }>()
+
+const { t } = useI18n()
 
 const topCats = computed(() => getVisibleTopCategories())
 const searchQuery = ref('')
@@ -158,10 +161,10 @@ function clearSearch() {
         v-model="searchQuery"
         class="search-input"
         type="text"
-        placeholder="搜索..."
+        :placeholder="t('nav.top.searchPlaceholder')"
         @input="onSearch"
       />
-      <button v-if="searchQuery" class="btn btn-icon" title="清除搜索" @click="clearSearch">✕</button>
+      <button v-if="searchQuery" class="btn btn-icon" :title="t('nav.top.clearSearch')" @click="clearSearch">✕</button>
     </div>
   </div>
 </template>

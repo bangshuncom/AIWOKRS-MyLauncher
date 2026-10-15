@@ -7,7 +7,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type {
   AllData, AppConfig, AssetCleanResult, AutorunStatus, BatchIconSummary, Category, Entry, Environment,
   ExeInfo, FileInfo, IconRefreshResult, ImportScanSummary, InitResult, LnkInfo, PathInfo, ScanResult, ConvertPathResult,
-  BookmarkParseResult, AppxAppInfo, SteamAppScanResult
+  BookmarkParseResult, AppxAppInfo, SteamAppScanResult, LangInfo, LangFile
 } from '@/types'
 
 // ─── 数据持久化 ───
@@ -202,5 +202,34 @@ export async function pick_file(filters?: { name: string; extensions: string[] }
 export async function pick_directory(): Promise<string | null> {
   const result = await open({ directory: true, multiple: false })
   return result as string | null
+}
+
+// ─── 窗口标题 ───
+
+/** 同步系统窗口标题为自定义标题（logo_text，传空恢复默认 "MyLauncher"） */
+export async function set_window_title(title: string): Promise<void> {
+  await invoke('set_window_title', { title })
+}
+
+// ─── 多语言（i18n） ───
+
+/** 释放内置默认语言文件到 lang/（幂等：缺哪个补哪个，永不覆盖）。init_data_dir 内部已调用，一般无需手动触发 */
+export async function init_lang_dir(): Promise<void> {
+  await invoke('init_lang_dir')
+}
+
+/** 扫描 lang/ 目录，返回全部可用语言（含损坏标记与完成度） */
+export async function list_languages(): Promise<LangInfo[]> {
+  return invoke<LangInfo[]>('list_languages')
+}
+
+/** 读取指定语言文件的完整内容（meta + messages） */
+export async function read_language(code: string): Promise<LangFile> {
+  return invoke<LangFile>('read_language', { code })
+}
+
+/** 用资源管理器打开 lang/ 目录 */
+export async function open_lang_dir(): Promise<void> {
+  await invoke('open_lang_dir')
 }
 

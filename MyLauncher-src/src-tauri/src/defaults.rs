@@ -129,6 +129,7 @@ pub(crate) fn default_config() -> AppConfig {
         sidebar_collapsed: false,
         card_cover_ratio: default_card_cover_ratio(),
         masonry_max_height: default_masonry_max_height(),
+        language: default_language(),
     }
 }
 

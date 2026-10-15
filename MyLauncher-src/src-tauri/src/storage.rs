@@ -30,6 +30,7 @@ use crate::icons::*;
 use crate::icons_refresh::*;
 use crate::icons_system::*;
 use crate::import::*;
+use crate::lang::*;
 use crate::launch::*;
 use crate::models::*;
 use crate::paths::*;
@@ -91,6 +92,9 @@ pub fn init_data_dir() -> Result<InitResult, String> {
         let config = default_config();
         write_json_file(&config_path, &config)?;
     }
+
+    // 释放内置默认语言文件（幂等：缺哪个补哪个，永不覆盖）
+    init_lang_dir()?;
 
     Ok(InitResult {
         data_dir: data_dir.to_string_lossy().to_string(),

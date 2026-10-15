@@ -46,6 +46,7 @@ export const state = reactive<StoreState>({
     logo_image_enabled: false,
     close_action: 'tray',
     custom_emojis: [],
+    language: 'zh-CN',
     favicon_api_sources: [
       'https://a.favicon.im/{url}?larger=true',
       'https://faviconsnap.com/api/favicon?url={url}',

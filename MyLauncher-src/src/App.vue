@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, type Component } from 'vue'
+import { onMounted, ref, computed, watch, type Component } from 'vue'
 import TopNav from '@/components/nav/TopNav.vue'
 import SideNav from '@/components/nav/SideNav.vue'
 import FooterNav from '@/components/nav/FooterNav.vue'
@@ -29,11 +29,15 @@ import { usePathStatus } from '@/composables/usePathStatus'
 import { useEntryLaunch } from '@/composables/useEntryLaunch'
 import { useDragDrop } from '@/composables/useDragDrop'
 import { useEntryContextMenu } from '@/composables/useEntryContextMenu'
+import { useI18n } from '@/composables/useI18n'
+import { initI18n } from '@/i18n'
+import { set_window_title } from '@/api'
 import { toggleInSet } from '@/utils/toggleInSet'
 
 // ─── 初始化 ───
 const loading = ref(true)
 const { toastMsg, toastVisible, showToast } = useToast()
+const { t } = useI18n()
 
 // ─── 对话框状态（集中在 useDialogs）───
 const dialogs = useDialogs()
@@ -63,10 +67,10 @@ const { dropOverlayVisible, setupDragDrop } = useDragDrop(() => refreshPathStatu
 async function handleDeleteEntry(entry: Entry) {
   try {
     await deleteEntries([entry.id])
-    showToast(`已删除: ${entry.name}`)
+    showToast(t('main.entryDeleted', { name: entry.name }))
     refreshPathStatus()
   } catch {
-    showToast('删除失败')
+    showToast(t('main.deleteFailed'))
   }
 }
 
@@ -106,6 +110,18 @@ async function toggleSidebar() {
 
 /** 侧导航是否应显示（有子分类且未折叠） */
 const showSidebar = computed(() => hasSubCategories.value && !sidebarCollapsed.value)
+
+// ─── 系统窗口标题跟随自定义标题（logo_text，空则恢复默认）───
+
+/** 把设置里的自定义标题同步到操作系统窗口标题栏 */
+function syncWindowTitle() {
+  set_window_title(state.config.logo_text || '').catch((e) => {
+    console.error('同步窗口标题失败', e)
+  })
+}
+
+// 启动后同步一次；用户在设置里改名后即时生效
+watch(() => state.config.logo_text, syncWindowTitle)
 
 // ─── 视图分发 ───
 
@@ -149,18 +165,22 @@ function handleSearch(q: string) {
 }
 
 function handleBookmarksImported(count: number) {
-  showToast(`已导入 ${count} 个书签`)
+  showToast(t('main.bookmarksImported', { count }))
   refreshPathStatus()
 }
 
 function handleCategoryDeleted() {
-  showToast('分类已删除')
+  showToast(t('main.categoryDeleted'))
   refreshPathStatus()
 }
 
 onMounted(async () => {
   try {
     await initStore()
+    // i18n 初始化：应用已保存的语言（老配置无该字段时跟随系统语言）
+    await initI18n(state.config.language)
+    // 窗口标题栏跟随设置里的自定义标题
+    syncWindowTitle()
     loading.value = false
     initTheme() // 应用已保存的明暗主题（system 模式监听系统切换）
     refreshPathStatus()
@@ -198,7 +218,7 @@ onMounted(async () => {
         v-if="hasSubCategories"
         class="sidebar-toggle"
         :class="{ 'sidebar-collapsed': !showSidebar }"
-        :title="showSidebar ? '隐藏侧导航' : '显示侧导航'"
+        :title="showSidebar ? t('nav.side.hide') : t('nav.side.show')"
         @click="toggleSidebar"
       >
         <span>{{ showSidebar ? '◀' : '▶' }}</span>
@@ -212,16 +232,16 @@ onMounted(async () => {
         <!-- 空状态 -->
         <div class="empty-state" v-if="currentEntries.length === 0 && !state.searchQuery">
           <div class="empty-icon">📂</div>
-          <div class="empty-text">该分类下暂无条目</div>
+          <div class="empty-text">{{ t('main.emptyCategory') }}</div>
           <div style="margin-top: 12px;">
-            <button class="btn btn-primary" @click="dialogs.openEntryEditor(null)">+ 添加项目</button>
+            <button class="btn btn-primary" @click="dialogs.openEntryEditor(null)">+ {{ t('main.addItem') }}</button>
           </div>
         </div>
 
         <!-- 搜索空结果 -->
         <div class="empty-state" v-else-if="currentEntries.length === 0 && state.searchQuery">
           <div class="empty-icon">🔍</div>
-          <div class="empty-text">未找到匹配 "{{ state.searchQuery }}" 的条目</div>
+          <div class="empty-text">{{ t('main.emptySearch', { query: state.searchQuery }) }}</div>
         </div>
 
         <!-- 动态视图组件 -->
@@ -289,20 +309,20 @@ onMounted(async () => {
     <div class="dialog-overlay" v-if="showSteamChoiceDialog" @click.self="showSteamChoiceDialog = false">
       <div class="dialog steam-choice-dialog">
         <div class="dialog-header">
-          <span>启动方式</span>
+          <span>{{ t('main.steamChoice.title') }}</span>
           <button class="btn btn-icon" @click="showSteamChoiceDialog = false">✕</button>
         </div>
         <div class="dialog-body">
           <p class="steam-choice-title">{{ steamChoiceEntry?.name }}</p>
-          <p class="steam-choice-tip">请选择该 Steam 游戏的启动方式</p>
+          <p class="steam-choice-tip">{{ t('main.steamChoice.tip') }}</p>
           <div class="steam-choice-buttons">
             <button class="btn steam-choice-btn" @click="launchSteamGame('steam')">
-              <span class="steam-choice-btn-title">Steam 启动</span>
-              <span class="steam-choice-btn-desc">通过 steam:// 协议唤起 Steam 客户端启动（推荐，兼容 DRM）</span>
+              <span class="steam-choice-btn-title">{{ t('main.steamChoice.viaSteam') }}</span>
+              <span class="steam-choice-btn-desc">{{ t('main.steamChoice.viaSteamDesc') }}</span>
             </button>
             <button class="btn steam-choice-btn" @click="launchSteamGame('exe')">
-              <span class="steam-choice-btn-title">直接启动 exe</span>
-              <span class="steam-choice-btn-desc">直接运行游戏主程序，部分依赖 Steam 环境的游戏可能失败</span>
+              <span class="steam-choice-btn-title">{{ t('main.steamChoice.viaExe') }}</span>
+              <span class="steam-choice-btn-desc">{{ t('main.steamChoice.viaExeDesc') }}</span>
             </button>
           </div>
         </div>
@@ -332,7 +352,7 @@ onMounted(async () => {
     <div class="drop-overlay" v-if="dropOverlayVisible">
       <div class="drop-overlay-box">
         <div class="drop-overlay-icon">⬇</div>
-        <div class="drop-overlay-text">松开以添加</div>
+        <div class="drop-overlay-text">{{ t('main.dropHint') }}</div>
       </div>
     </div>
 
@@ -343,7 +363,7 @@ onMounted(async () => {
   <!-- 加载中 -->
   <div class="loading-screen" v-else>
     <div class="loading-spinner"></div>
-    <div class="loading-text">正在加载...</div>
+    <div class="loading-text">{{ t('app.loading') }}</div>
   </div>
 </template>
 

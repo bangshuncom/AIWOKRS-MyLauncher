@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MyLauncher - 绿色便携程序管理器",
+        "title": "MyLauncher",
         "width": 1200,
         "height": 800,
         "minWidth": 900,

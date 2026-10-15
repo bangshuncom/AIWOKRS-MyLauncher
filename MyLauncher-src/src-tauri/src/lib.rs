@@ -22,6 +22,8 @@ mod favicon;
 mod bookmarks;
 mod assets;
 mod autorun;
+mod lang;
+mod window;
 
 use tauri::{command, Emitter};
 use std::fs;
@@ -58,6 +60,8 @@ use crate::favicon::*;
 use crate::bookmarks::*;
 use crate::assets::*;
 use crate::autorun::*;
+use crate::lang::*;
+use crate::window::*;
 
 // ════════════════════════════════════════════
 // 应用入口
@@ -193,7 +197,12 @@ pub fn run() {
             refresh_entry_icon,
             batch_refresh_icons,
             set_autorun,
-            get_autorun
+            get_autorun,
+            init_lang_dir,
+            list_languages,
+            read_language,
+            open_lang_dir,
+            set_window_title
         ])
         .run(tauri::generate_context!())
         .expect("MyLauncher 启动失败");
