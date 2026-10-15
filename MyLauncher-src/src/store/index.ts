@@ -844,6 +844,7 @@ export function createEntryDraft(categoryId: string, type: EntryType): Omit<Entr
     window_style: 'normal',
     run_as_admin: false,
     url: '',
+    update_url: '',
     icon: { type: 'default', source: '' },
     icon_source: '',
     cover: { enabled: false, source: '' },

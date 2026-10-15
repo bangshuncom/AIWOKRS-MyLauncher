@@ -82,6 +82,7 @@ function applySystemSelection(sel: SystemAppSelection) {
   form.value.launch_args = sel.args || ''
   form.value.working_directory = ''
   form.value.run_as_admin = false
+  form.value.update_url = ''
   if (sel.iconEmoji) {
     form.value.icon = { type: 'emoji', source: sel.iconEmoji }
     form.value.icon_source = ''
@@ -118,6 +119,7 @@ function loadEntry() {
       window_style: e.window_style as any,
       run_as_admin: e.run_as_admin,
       url: e.url,
+      update_url: e.update_url || '',
       icon: { ...e.icon },
       icon_source: e.icon_source || '',
       cover: { ...e.cover },
@@ -356,6 +358,20 @@ async function fetchFavicon() {
     }
   } catch (e) {
     error.value = `获取 favicon 失败: ${e}`
+  }
+}
+
+// 更新地址：用系统默认浏览器打开（查看开源软件最新版本等）
+async function openUpdateUrl() {
+  const u = form.value.update_url?.trim()
+  if (!u) {
+    error.value = '请先填写更新地址'
+    return
+  }
+  try {
+    await api.open_external_url(u)
+  } catch (e) {
+    error.value = `打开更新地址失败: ${e}`
   }
 }
 
@@ -772,6 +788,24 @@ watch(() => form.value.type, (newType, oldType) => {
             v-model:absolute-path="form.absolute_paths[state.currentEnvId]"
             :is-different-drive="isDifferentDrive"
           />
+        </template>
+
+        <!-- 更新地址（仅程序/文件）：记录开源软件发布页，一键访问查看最新版本 -->
+        <template v-if="form.type === 'program' || form.type === 'file'">
+          <div class="form-section">更新地址</div>
+          <div class="form-row">
+            <label class="form-label">发布页</label>
+            <div style="display: flex; gap: 4px;">
+              <input
+                v-model="form.update_url"
+                class="input"
+                placeholder="如 https://github.com/owner/repo/releases（可留空）"
+                style="flex: 1;"
+                @keyup.enter="openUpdateUrl"
+              />
+              <button class="btn" @click="openUpdateUrl" :disabled="!form.update_url?.trim()">访问</button>
+            </div>
+          </div>
         </template>
 
         <!-- 系统功能/APPX：选择目标 -->

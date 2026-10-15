@@ -57,6 +57,10 @@ pub struct Entry {
     pub window_style: String,
     pub run_as_admin: bool,
     pub url: String,
+    /// 更新地址（可选）：开源软件的 GitHub 仓库/发布页等，编辑页可一键访问查看新版本。
+    /// 仅 program/file 类型使用，旧数据无此字段
+    #[serde(default)]
+    pub update_url: String,
     pub icon: ImageResource,
     /// 图标来源描述（可选）：系统功能条目专用，
     /// 格式 "sys:<文件>|<组索引>"（如 "sys:%windir%\\system32\\devmgr.dll|5"）
@@ -836,6 +840,25 @@ fn check_paths_batch(entries: Vec<Entry>, current_env_id: String) -> Result<Vec<
 }
 
 // ─── 启动程序 ───
+
+/// 用系统默认浏览器打开外部网址（条目的更新地址等）。
+/// 无协议前缀时自动补 https://；仅允许 http/https，防止误触其他协议
+#[command]
+fn open_external_url(url: String) -> Result<bool, String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return Err("网址为空".to_string());
+    }
+    let lower = u.to_lowercase();
+    let normalized = if lower.starts_with("http://") || lower.starts_with("https://") {
+        u.to_string()
+    } else if lower.contains("://") {
+        return Err(format!("不支持的链接协议: {}", u));
+    } else {
+        format!("https://{}", u)
+    };
+    shell_execute_open(&normalized, None, false, SW_SHOWNORMAL.0)
+}
 
 #[command]
 fn launch_program(entry: Entry, current_env_id: String) -> Result<bool, String> {
@@ -2040,6 +2063,9 @@ fn extract_sys_icon_image(file: &str, index: i32, size: u32) -> Result<image::Rg
 
     let mut hicons = [windows::Win32::UI::WindowsAndMessaging::HICON::default(); 1];
     let mut icon_ids = [0u32; 1];
+    // 注意：windows 0.58 包装签名第 7 参数是 flags（nIcons 由 phicon 切片长度推导）。
+    // 传 0 = LR_DEFAULTCOLOR；曾误传 1 = LR_MONOCHROME，导致无原生 256px 帧的
+    // 图标走单色转换路径，alpha 全部清零（表现为空图标）。
     let n = unsafe {
         PrivateExtractIconsW(
             &path_buf,
@@ -2048,7 +2074,7 @@ fn extract_sys_icon_image(file: &str, index: i32, size: u32) -> Result<image::Rg
             size as i32,
             Some(&mut hicons),
             Some(icon_ids.as_mut_ptr()),
-            1,
+            0,
         )
     };
     let hicon = hicons[0];
@@ -2242,6 +2268,26 @@ mod sys_icon_tests {
         let p = resolve_app_alias("mspaint.exe").expect("别名解析失败");
         assert!(p.as_os_str().to_string_lossy().to_lowercase().ends_with("mspaint.exe"));
         assert!(p.exists());
+    }
+
+    #[test]
+    fn extract_reported_empty_icons() {
+        // 用户反馈的四项空图标：逐一提取并断言非透明（alpha 有效内容占比 > 5%）
+        let cases: [(&str, i32); 5] = [
+            ("%windir%\\system32\\Mycomput.dll", 0),   // 计算机管理
+            ("%windir%\\system32\\pmcsnap.dll", 0),    // 打印管理
+            ("%windir%\\system32\\gpedit.dll", 0),     // 本地组策略
+            ("%windir%\\system32\\wsecedit.dll", 0),   // 本地安全策略
+            ("dxdiag.exe", 0),                          // DirectX 诊断
+        ];
+        for (file, index) in cases {
+            let img = extract_sys_icon_image(file, index, 256)
+                .unwrap_or_else(|e| panic!("{} @{} 提取失败: {}", file, index, e));
+            assert_eq!((img.width(), img.height()), (256, 256));
+            let opaque = img.pixels().filter(|p| p[3] > 10).count();
+            let pct = (opaque as u64) * 100 / ((img.width() as u64) * (img.height() as u64));
+            assert!(pct > 5, "{} @{} 图标全透明（不透明仅 {}%）", file, index, pct);
+        }
     }
 }
 
@@ -2825,6 +2871,7 @@ fn import_scan_items(
                         window_style: "normal".to_string(),
                         run_as_admin: false,
                         url: format!("steam://rungameid/{}", s.app_id),
+                        update_url: String::new(),
                         icon: if icon_path.is_empty() {
                             ImageResource { res_type: "default".to_string(), source: String::new() }
                         } else {
@@ -2864,6 +2911,7 @@ fn import_scan_items(
                         window_style: "normal".to_string(),
                         run_as_admin: false,
                         url: String::new(),
+                        update_url: String::new(),
                         icon: if icon_path.is_empty() {
                             ImageResource { res_type: "default".to_string(), source: String::new() }
                         } else {
@@ -4141,6 +4189,7 @@ pub fn run() {
             resolve_path,
             check_paths_batch,
             launch_program,
+            open_external_url,
             get_exe_info,
             get_file_info,
             resolve_lnk,

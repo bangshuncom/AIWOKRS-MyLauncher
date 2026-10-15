@@ -28,6 +28,8 @@ export interface Entry {
   window_style: 'normal' | 'maximized' | 'minimized'
   run_as_admin: boolean
   url: string
+  /** 更新地址（可选，仅程序/文件）：开源软件发布页等，编辑页可一键访问查看新版本 */
+  update_url?: string
   icon: ImageResource
   /** 图标来源描述（系统功能条目专用）："sys:<文件>|<组索引>" 或 "glyph:<Segoe 码点>"，重提取用；emoji 图标为空 */
   icon_source?: string

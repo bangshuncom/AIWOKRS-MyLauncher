@@ -66,6 +66,12 @@ export async function launch_program(entry: Entry, currentEnvId: string): Promis
   return invoke<boolean>('launch_program', { entry, currentEnvId })
 }
 
+// ─── 打开外部网址（更新地址等，系统默认浏览器） ───
+
+export async function open_external_url(url: string): Promise<boolean> {
+  return invoke<boolean>('open_external_url', { url })
+}
+
 // ─── 打开所在目录 ───
 
 export async function open_in_explorer(entry: Entry, currentEnvId: string): Promise<boolean> {
