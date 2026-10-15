@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import type { Category } from '@/types'
 import { resolveCategoryIcon } from '@/store'
+import { onImgError, onImgLoad } from '@/composables/useImageFallback'
 
 const props = defineProps<{
   category?: Category | null
@@ -22,7 +23,8 @@ const icon = computed(() => resolveCategoryIcon(props.category ?? undefined))
     class="cat-icon-img"
     alt=""
     draggable="false"
-    @error="($event.target as HTMLImageElement).style.display = 'none'"
+    @error="onImgError"
+    @load="onImgLoad"
   />
 </template>
 

@@ -11,7 +11,7 @@ MyLauncher 是一款 Windows 桌面应用，帮你把散落在各个磁盘和目
 - **多类型收录** — 支持添加程序（exe）、网址、文件夹、文件、系统功能、UWP 应用
 - **分类管理** — 多级分类树，支持拖拽排序和移动层级
 - **分类隐藏** — 任意层级分类可勾选「前台隐藏」，隐藏后前台不可见；三击 LOGO 弹出关于窗口的同时临时解锁全部隐藏分类，重启后恢复隐藏
-- **4 种视图** — 图标网格、竖向卡片、横向卡片、表格列表，每个分类独立设置
+- **5 种视图** — 图标网格、竖向卡片、横向卡片、表格列表、瀑布流，每个分类独立设置
 - **多环境支持** — 同一程序在不同电脑可配置不同路径，相对/绝对路径互转
 - **自动图标提取** — 程序、文件、文件夹自动提取 Windows 系统图标，网址自动抓取 favicon
 - **拖拽添加** — 直接把 exe 或快捷方式拖进窗口，自动识别名称和图标
@@ -129,20 +129,36 @@ npm run tauri build
 ```
 MyLauncher-src/
 ├── src/                          # 前端源码
-│   ├── App.vue                   # 根组件（布局 + 对话框 + 拖拽 + 右键菜单）
+│   ├── App.vue                   # 根组件（布局装配，业务逻辑已抽到 composables/）
 │   ├── api/index.ts              # Tauri 命令封装层
-│   ├── store/index.ts            # 全局状态管理
+│   ├── store/                    # 全局状态管理（index.ts 只做 re-export）
+│   │   ├── state.ts / init.ts    # 响应式状态对象与初始化
+│   │   ├── categories.ts         # 分类：查询、增删改、层级移动
+│   │   ├── entries.ts            # 条目：增删改、路径模式转换、图标重提取
+│   │   ├── environments.ts       # 环境：增删改与切换
+│   │   ├── selection.ts          # 批量选择集合
+│   │   ├── settings.ts           # 设置保存与明暗主题
+│   │   └── assets.ts             # 资源路径解析与过期清理
 │   ├── types/index.ts            # TypeScript 类型定义
 │   ├── components/               # 组件
 │   │   ├── nav/                  # 导航栏（顶部/侧栏/底部）
-│   │   ├── views/                # 4 种视图组件
+│   │   ├── views/                # 5 种视图组件
+│   │   ├── entry/                # 条目共用小组件（勾选框/管理员标记/图标）
 │   │   └── dialogs/              # 各类对话框
-│   ├── composables/              # Vue 组合式函数
+│   ├── composables/              # Vue 组合式函数（对话框/启动/拖拽/右键菜单等）
+│   ├── utils/                    # 纯函数（条目展示取值、格式化等）
 │   ├── data/                     # 静态数据（emoji、系统功能列表）
 │   └── styles/                   # 全局样式
 │
 └── src-tauri/                    # Rust 后端
-    └── src/lib.rs                # 核心逻辑（数据持久化、图标提取、程序启动等）
+    └── src/
+        ├── lib.rs                # 模块声明 + 应用入口（托盘、命令注册）
+        ├── models.rs / defaults.rs
+        ├── paths.rs / storage.rs / launch.rs
+        ├── icons.rs / icons_refresh.rs / icons_system.rs
+        ├── steam.rs / import.rs
+        ├── favicon.rs / bookmarks.rs / assets.rs
+        └── autorun.rs
 ```
 
 ## 使用技巧

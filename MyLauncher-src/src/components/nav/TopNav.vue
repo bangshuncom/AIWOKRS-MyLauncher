@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { state, getVisibleTopCategories, getCategoryById, switchEnvironment, resolveAssetUrl } from '@/store'
 import CategoryIcon from '@/components/CategoryIcon.vue'
+import { onImgError } from '@/composables/useImageFallback'
 
 const emit = defineEmits<{
   (e: 'search', q: string): void
@@ -125,12 +126,12 @@ async function switchEnv(envId: string) {
     <div class="brand-anchor" :class="{ 'has-logo-image': logoImageEnabled }" :title="logoText" @click="onBrandClick">
       <!-- 启用 LOGO 图片：整体显示为图片 -->
       <template v-if="logoImageEnabled">
-        <img :src="logoImageUrl" class="brand-image" alt="LOGO" @error="($event.target as HTMLImageElement).style.display='none'" />
+        <img :src="logoImageUrl" class="brand-image" alt="LOGO" @error="onImgError" />
       </template>
       <!-- 默认：LOGO 图标 + 文字 -->
       <template v-else>
         <div class="brand-logo">
-          <img v-if="logoIconUrl" :src="logoIconUrl" class="brand-logo-img" alt="LOGO" @error="($event.target as HTMLImageElement).style.display='none'" />
+          <img v-if="logoIconUrl" :src="logoIconUrl" class="brand-logo-img" alt="LOGO" @error="onImgError" />
           <span v-else>{{ logoIcon }}</span>
         </div>
         <span class="brand-name">{{ logoText }}</span>

@@ -17,48 +17,70 @@ import DeleteCategoryDialog from '@/components/dialogs/DeleteCategoryDialog.vue'
 import SettingsDialog from '@/components/dialogs/SettingsDialog.vue'
 import AboutDialog from '@/components/dialogs/AboutDialog.vue'
 import BatchToolbar from '@/components/BatchToolbar.vue'
-import ContextMenu, { type MenuItem } from '@/components/ContextMenu.vue'
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { state, initStore, getCurrentEntries, getCurrentCategory, getCategoryById, getSubCategories, updateCategory, createEntryDraft, initTheme, saveSettings, unlockHiddenCategories } from '@/store'
-import { updateLastUsed, addEntry, deleteEntries } from '@/store'
-import * as api from '@/api'
-import type { Entry, EntryType } from '@/types'
+import ContextMenu from '@/components/ContextMenu.vue'
+import {
+  state, initStore, getCurrentEntries, getCurrentCategory, getCategoryById, getSubCategories,
+  updateCategory, initTheme, saveSettings, unlockHiddenCategories, deleteEntries,
+} from '@/store'
+import type { Entry } from '@/types'
 import { useToast } from '@/composables/useToast'
+import { useDialogs } from '@/composables/useDialogs'
+import { usePathStatus } from '@/composables/usePathStatus'
+import { useEntryLaunch } from '@/composables/useEntryLaunch'
+import { useDragDrop } from '@/composables/useDragDrop'
+import { useEntryContextMenu } from '@/composables/useEntryContextMenu'
 import { toggleInSet } from '@/utils/toggleInSet'
 
-// 初始化加载
+// ─── 初始化 ───
 const loading = ref(true)
 const { toastMsg, toastVisible, showToast } = useToast()
 
-// 对话框状态
-const showEntryEditor = ref(false)
-const editingEntry = ref<Entry | null>(null)
-const editingEntryType = ref<EntryType>('program')
-const showEnvManager = ref(false)
-const showCatManager = ref(false)
-const showScanDialog = ref(false)
-const showBookmarkDialog = ref(false)
-const showSettingsDialog = ref(false)
-const showAboutDialog = ref(false)
-const deleteCatId = ref<string | null>(null)
-
-// 分类编辑器初始状态
-const catManagerEditId = ref<string | undefined>(undefined)
-const catManagerNewParentId = ref<string | null | undefined>(undefined)
-
-// 路径状态缓存
-const pathStatusMap = ref<Map<string, boolean>>(new Map())
-
-// LOGO 三击：弹出关于窗口的同时解锁隐藏分类（持续到关闭软件，不持久化）
-function openAboutAndUnlock() {
-  unlockHiddenCategories()
-  showAboutDialog.value = true
-}
+// ─── 对话框状态（集中在 useDialogs）───
+const dialogs = useDialogs()
+const {
+  showEntryEditor, editingEntry, editingEntryType,
+  showEnvManager, showCatManager, showScanDialog, showBookmarkDialog,
+  showSettingsDialog, showAboutDialog,
+  deleteCatId, catManagerEditId, catManagerNewParentId,
+  showSteamChoiceDialog, steamChoiceEntry,
+} = dialogs
 
 const currentEntries = computed(() => getCurrentEntries())
 const currentCategory = computed(() => getCurrentCategory())
 
-// 当前一级分类是否有子分类（无子分类时隐藏侧导航）
+// ─── 路径状态检查 ───
+const { pathStatusMap, refreshPathStatus } = usePathStatus(() => currentEntries.value)
+
+// ─── 条目启动（含 Steam 双方式选择）───
+const { handleLaunch, launchSteamGame, openInExplorer, hasFilePath } = useEntryLaunch({
+  showSteamChoiceDialog, steamChoiceEntry,
+})
+
+// ─── 拖拽收录 ───
+const { dropOverlayVisible, setupDragDrop } = useDragDrop(() => refreshPathStatus())
+
+// ─── 右键菜单 ───
+async function handleDeleteEntry(entry: Entry) {
+  try {
+    await deleteEntries([entry.id])
+    showToast(`已删除: ${entry.name}`)
+    refreshPathStatus()
+  } catch {
+    showToast('删除失败')
+  }
+}
+
+const { contextMenu, openEntryContextMenu, closeContextMenu } = useEntryContextMenu({
+  onLaunch: handleLaunch,
+  onEdit: (entry) => dialogs.openEntryEditor(entry),
+  onDelete: handleDeleteEntry,
+  hasFilePath,
+  onOpenInExplorer: openInExplorer,
+})
+
+// ─── 侧导航折叠 ───
+
+/** 当前一级分类是否有子分类（无子分类时隐藏侧导航） */
 const hasSubCategories = computed(() => {
   let cat = state.currentCategoryId ? getCategoryById(state.currentCategoryId) : undefined
   while (cat && cat.parent_id) {
@@ -67,8 +89,6 @@ const hasSubCategories = computed(() => {
   if (!cat) return false
   return getSubCategories(cat.id).length > 0
 })
-
-// ─── 侧导航折叠 ───
 
 /** 侧导航当前是否折叠（隐藏），来自已持久化配置 */
 const sidebarCollapsed = computed(() => state.config.sidebar_collapsed)
@@ -86,6 +106,8 @@ async function toggleSidebar() {
 
 /** 侧导航是否应显示（有子分类且未折叠） */
 const showSidebar = computed(() => hasSubCategories.value && !sidebarCollapsed.value)
+
+// ─── 视图分发 ───
 
 const currentViewMode = computed(() => {
   return currentCategory.value?.view_mode || 'icon_grid'
@@ -115,297 +137,22 @@ function switchViewMode(mode: string) {
   }
 }
 
-// 路径状态检查
-async function refreshPathStatus() {
-  const entries = currentEntries.value.filter(e => e.type === 'program' || e.type === 'folder' || e.type === 'file' || e.type === 'steam')
-  if (entries.length === 0) return
-  try {
-    const results = await api.check_paths_batch(entries, state.currentEnvId)
-    const map = new Map<string, boolean>()
-    entries.forEach((e, i) => map.set(e.id, results[i]))
-    pathStatusMap.value = map
-  } catch (e) {
-    console.error('路径状态检查失败', e)
-  }
-}
+// ─── 其余回调 ───
 
-// 启动条目
-async function handleLaunch(entry: Entry) {
-  // Steam 游戏条目：弹窗让用户选择启动方式（Steam 协议 / 直接启动 exe）
-  if (entry.type === 'steam') {
-    steamChoiceEntry.value = entry
-    showSteamChoiceDialog.value = true
-    return
-  }
-  if (entry.type === 'url') {
-    const success = await api.launch_program(entry, state.currentEnvId)
-    if (success) {
-      await updateLastUsed(entry.id)
-      showToast(`已打开: ${entry.name}`)
-    }
-  } else {
-    const pathInfo = await api.resolve_path(entry, state.currentEnvId)
-    if (!pathInfo.exists) {
-      showToast(`路径失效: ${entry.name}`)
-      // 刷新状态
-      pathStatusMap.value.set(entry.id, false)
-      return
-    }
-    const success = await api.launch_program(entry, state.currentEnvId)
-    if (success) {
-      await updateLastUsed(entry.id)
-      showToast(`已启动: ${entry.name}`)
-    } else {
-      showToast(`启动失败: ${entry.name}`)
-    }
-  }
-}
-
-// Steam 启动方式选择弹窗
-const showSteamChoiceDialog = ref(false)
-const steamChoiceEntry = ref<Entry | null>(null)
-
-// 执行 Steam 游戏启动（按用户选择的方式）
-async function launchSteamGame(mode: 'steam' | 'exe') {
-  const entry = steamChoiceEntry.value
-  showSteamChoiceDialog.value = false
-  if (!entry) return
-
-  if (mode === 'steam') {
-    // 直接用原条目（url = steam://rungameid/{appid}）启动
-    const success = await api.launch_program(entry, state.currentEnvId)
-    if (success) {
-      await updateLastUsed(entry.id)
-      showToast(`已启动: ${entry.name}`)
-    } else {
-      showToast(`启动失败: ${entry.name}`)
-    }
-    return
-  }
-
-  // exe 方式：条目 absolute_paths 中保存了游戏 exe 路径（导入时存入），
-  // 构造临时 program 条目直接启动 exe
-  const exePath = Object.values(entry.absolute_paths)[0] || ''
-  if (!exePath) {
-    showToast(`游戏路径未保存: ${entry.name}`)
-    return
-  }
-  const proxyEntry: Entry = {
-    ...entry,
-    type: 'program',
-    path_mode: 'absolute',
-    relative_path: '',
-    absolute_paths: { [state.currentEnvId]: exePath },
-  }
-  const success = await api.launch_program(proxyEntry, state.currentEnvId)
-  if (success) {
-    await updateLastUsed(entry.id)
-    showToast(`已启动: ${entry.name}`)
-  } else {
-    showToast(`启动失败: ${entry.name}`)
-  }
-}
-
-// 编辑条目
-function handleEditEntry(entry: Entry) {
-  editingEntry.value = entry
-  editingEntryType.value = entry.type
-  showEntryEditor.value = true
-}
-
-// 右键菜单状态
-const contextMenu = ref<{ x: number; y: number; items: MenuItem[] } | null>(null)
-
-// 有文件路径的类型（网址/系统功能/APPX 不显示「目录」；Steam 游戏定位到游戏 exe）
-function hasFilePath(entry: Entry): boolean {
-  return entry.type === 'program' || entry.type === 'folder' || entry.type === 'file'
-    || (entry.type === 'steam' && !!Object.values(entry.absolute_paths)[0])
-}
-
-// 打开条目所在目录（资源管理器定位并选中）
-async function openInExplorer(entry: Entry) {
-  try {
-    await api.open_in_explorer(entry, state.currentEnvId)
-  } catch (e) {
-    showToast(`打开目录失败: ${e}`)
-  }
-}
-
-// 打开条目右键菜单
-function openEntryContextMenu(entry: Entry, e: MouseEvent) {
-  e.preventDefault()
-  e.stopPropagation() // 阻止冒泡到 window，避免 ContextMenu 自身的 contextmenu 监听器立即关闭菜单
-  contextMenu.value = {
-    x: e.clientX,
-    y: e.clientY,
-    items: [
-      {
-        label: '打开',
-        icon: '▶️',
-        action: () => handleLaunch(entry),
-      },
-      {
-        label: '编辑',
-        icon: '✏️',
-        action: () => handleEditEntry(entry),
-      },
-      ...(hasFilePath(entry) ? [{
-        label: '目录',
-        icon: '📂',
-        action: () => openInExplorer(entry),
-      }] : []),
-      {
-        label: '删除',
-        icon: '🗑',
-        danger: true,
-        action: () => handleDeleteEntry(entry),
-      },
-    ],
-  }
-}
-
-// 删除条目
-async function handleDeleteEntry(entry: Entry) {
-  try {
-    await deleteEntries([entry.id])
-    showToast(`已删除: ${entry.name}`)
-    refreshPathStatus()
-  } catch (e) {
-    showToast('删除失败')
-  }
-}
-
-function closeContextMenu() {
-  contextMenu.value = null
-}
-
-// 新增条目（统一入口，类型在编辑器中选择）
-function handleAddEntry() {
-  editingEntry.value = null
-  editingEntryType.value = 'program'
-  showEntryEditor.value = true
-}
-
-// 条目保存回调
 function onEntrySaved() {
   showEntryEditor.value = false
   refreshPathStatus()
 }
 
-// 分类编辑/新建入口
-function handleEditCategory(catId: string) {
-  catManagerEditId.value = catId
-  catManagerNewParentId.value = undefined
-  showCatManager.value = true
-}
-
-function handleAddSubCategory(parentId: string | null) {
-  catManagerEditId.value = undefined
-  catManagerNewParentId.value = parentId
-  showCatManager.value = true
-}
-
-function closeCatManager() {
-  showCatManager.value = false
-  catManagerEditId.value = undefined
-  catManagerNewParentId.value = undefined
-}
-
-// 搜索
 function handleSearch(q: string) {
   state.searchQuery = q
 }
 
-// 拖拽添加（Tauri 文件拖拽事件）
-// 需求：直接把 exe 拖进软件窗口即可收录
-const dropOverlayVisible = ref(false)
-
-async function handleDroppedFiles(paths: string[]) {
-  if (paths.length === 0) return
-
-  let ok = 0
-  for (const p of paths) {
-    try {
-      let draft = createEntryDraft(state.currentCategoryId || '', 'program')
-
-      if (/\.(exe|bat|cmd|lnk)$/i.test(p)) {
-        const isLnk = /\.lnk$/i.test(p)
-
-        if (isLnk) {
-          const lnk = await api.resolve_lnk(p)
-          draft.name = lnk.name
-          draft.type = 'program'
-          draft.relative_path = lnk.relative_path
-          draft.absolute_paths = lnk.target_path ? { [state.currentEnvId]: lnk.target_path } : {}
-          draft.path_mode = (lnk.suggested_path_mode === 'relative' ? 'relative' : 'absolute') as 'relative' | 'absolute'
-          draft.launch_args = lnk.arguments || ''
-          draft.working_directory = lnk.working_directory || ''
-          draft.window_style = (lnk.window_style as 'normal' | 'maximized' | 'minimized') || 'normal'
-          draft.notes = lnk.description || ''
-          if (lnk.icon_path) draft.icon = { type: 'extracted', source: lnk.icon_path }
-        } else {
-          const info = await api.get_exe_info(p)
-          draft.name = info.name || p.split(/[\\/]/).pop()?.replace(/\.(exe|bat|cmd)$/i, '') || '未命名'
-          draft.type = 'program'
-          draft.relative_path = info.relative_path
-          draft.absolute_paths = info.absolute_path ? { [state.currentEnvId]: info.absolute_path } : {}
-          draft.path_mode = (info.suggested_path_mode === 'relative' ? 'relative' : 'absolute') as 'relative' | 'absolute'
-          if (info.icon_path) draft.icon = { type: 'extracted', source: info.icon_path }
-        }
-      } else {
-        const info = await api.get_file_info(p)
-        if (!info.file_exists) {
-          console.error('文件不存在', p)
-          continue
-        }
-        draft.name = info.name
-        draft.type = info.entry_type as 'folder' | 'file'
-        draft.relative_path = info.relative_path
-        draft.absolute_paths = info.absolute_path ? { [state.currentEnvId]: info.absolute_path } : {}
-        draft.path_mode = (info.suggested_path_mode === 'relative' ? 'relative' : 'absolute') as 'relative' | 'absolute'
-        if (info.icon_path) draft.icon = { type: 'extracted', source: info.icon_path }
-      }
-
-      await addEntry(draft)
-      ok++
-    } catch (e) {
-      console.error('拖拽添加失败', p, e)
-    }
-  }
-  showToast(ok > 0 ? `已添加 ${ok} 个条目` : '添加失败')
-  if (ok > 0) refreshPathStatus()
-}
-
-// 监听 Tauri 窗口拖拽事件
-let dropHideTimer: ReturnType<typeof setTimeout> | null = null
-function setupDragDrop() {
-  const win = getCurrentWindow()
-  win.onDragDropEvent((event) => {
-    if (event.payload.type === 'over') {
-      dropOverlayVisible.value = true
-      // 每次 over 刷新兜底定时器
-      if (dropHideTimer) clearTimeout(dropHideTimer)
-      dropHideTimer = setTimeout(() => {
-        dropOverlayVisible.value = false
-      }, 800)
-    } else if (event.payload.type === 'leave') {
-      if (dropHideTimer) clearTimeout(dropHideTimer)
-      dropOverlayVisible.value = false
-    } else if (event.payload.type === 'drop') {
-      if (dropHideTimer) clearTimeout(dropHideTimer)
-      dropOverlayVisible.value = false
-      handleDroppedFiles(event.payload.paths)
-    }
-  })
-}
-
-// 书签导入完成
 function handleBookmarksImported(count: number) {
   showToast(`已导入 ${count} 个书签`)
   refreshPathStatus()
 }
 
-// 分类删除完成
 function handleCategoryDeleted() {
   showToast('分类已删除')
   refreshPathStatus()
@@ -429,7 +176,10 @@ onMounted(async () => {
   <div class="app-layout" v-if="!loading" @contextmenu.prevent>
     <!-- 顶部导航栏 -->
     <header class="app-header">
-      <TopNav @search="handleSearch" @open-settings="openAboutAndUnlock" />
+      <TopNav
+        @search="handleSearch"
+        @open-settings="dialogs.openAboutAndUnlock(unlockHiddenCategories)"
+      />
     </header>
 
     <!-- 主体区域 -->
@@ -437,8 +187,8 @@ onMounted(async () => {
       <!-- 侧导航（一级分类无子分类或已折叠时隐藏） -->
       <aside class="app-sidebar" v-if="showSidebar">
         <SideNav
-          @edit-category="handleEditCategory"
-          @add-sub-category="handleAddSubCategory"
+          @edit-category="dialogs.openCatManager($event)"
+          @add-sub-category="dialogs.openCatManager(undefined, $event)"
           @delete-category="deleteCatId = $event"
         />
       </aside>
@@ -464,7 +214,7 @@ onMounted(async () => {
           <div class="empty-icon">📂</div>
           <div class="empty-text">该分类下暂无条目</div>
           <div style="margin-top: 12px;">
-            <button class="btn btn-primary" @click="handleAddEntry()">+ 添加项目</button>
+            <button class="btn btn-primary" @click="dialogs.openEntryEditor(null)">+ 添加项目</button>
           </div>
         </div>
 
@@ -479,7 +229,7 @@ onMounted(async () => {
           v-else
           v-bind="viewBindings"
           @launch="handleLaunch"
-          @edit="handleEditEntry"
+          @edit="dialogs.openEntryEditor($event)"
           @contextmenu="openEntryContextMenu"
           @toggle-select="(id: string) => toggleInSet(state.selectedIds, id)"
         />
@@ -493,8 +243,8 @@ onMounted(async () => {
         :has-category="!!currentCategory"
         :batch-mode="state.batchMode"
         @switch-view="switchViewMode"
-        @add-entry="handleAddEntry"
-        @manage-categories="catManagerEditId = undefined; catManagerNewParentId = undefined; showCatManager = true"
+        @add-entry="dialogs.openEntryEditor(null)"
+        @manage-categories="dialogs.openCatManager()"
         @manage-environments="showEnvManager = true"
         @scan-directory="showScanDialog = true"
         @import-bookmarks="showBookmarkDialog = true"
@@ -528,7 +278,7 @@ onMounted(async () => {
       v-if="showCatManager"
       :initial-edit-id="catManagerEditId"
       :initial-new-parent-id="catManagerNewParentId"
-      @close="closeCatManager"
+      @close="dialogs.closeCatManager()"
     />
     <ScanDialog
       v-if="showScanDialog"

@@ -28,8 +28,13 @@ dist/
 *.sln
 *.sw?
 
-# 备份文件
+# 备份文件（*.bak / *.orig 等单文件备份）
 *.bak
+*.orig
+
+# 备份归档目录（整批旧版本归档，如 _bak-archive-20261015/）
+_bak-archive*/
+bak-archive*/
 
 # Rust 构建输出
 MyLauncher-src/src-tauri/target/

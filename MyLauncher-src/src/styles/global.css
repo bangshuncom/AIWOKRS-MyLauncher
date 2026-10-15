@@ -306,3 +306,70 @@ html.dark .toast {
   background: #f3f3f3;
   color: #1a1a1a;
 }
+
+/* ─── 条目通用（五个视图共用）────────────────────────
+   原先每个视图各自复制一份 .batch-checkbox / .admin-badge 及 hover 显隐规则。
+   勾选框的 hover 显隐依赖父级卡片状态，无法写进子组件 scoped，故统一放这里，
+   并以 .entry-cell 作为各视图条目根元素的统一钩子。
+   ───────────────────────────────────────────────── */
+.entry-checkbox {
+  cursor: pointer;
+}
+
+.entry-checkbox-absolute {
+  position: absolute;
+  z-index: 3;
+}
+
+/* 非多选模式下 hover 显示勾选框 */
+.entry-checkbox-hover {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.entry-cell:hover .entry-checkbox-hover,
+.entry-cell.selected .entry-checkbox-hover {
+  opacity: 1;
+}
+
+/* 管理员标记：卡片视图绝对定位，表格视图行内显示在名称后 */
+.entry-admin-badge {
+  user-select: none;
+}
+
+.entry-admin-badge-absolute {
+  position: absolute;
+  z-index: 2;
+}
+
+.entry-admin-badge-inline {
+  display: inline;
+  margin-left: 4px;
+}
+
+/* 表格视图的兜底图标徽标（带底色圆角） */
+.entry-fallback-badge {
+  background: var(--color-primary-bg);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--color-primary-dark);
+}
+
+/* 卡片/瀑布流分档列数：断点只在此处定义一次，两个视图用 --cols 取值。
+   基于内容区宽度（容器查询），最小 2 列，最大 6 列 */
+.responsive-cols {
+  --cols: 2;
+}
+
+@container (min-width: 960px) {
+  .responsive-cols { --cols: 3; }
+}
+@container (min-width: 1260px) {
+  .responsive-cols { --cols: 4; }
+}
+@container (min-width: 1560px) {
+  .responsive-cols { --cols: 5; }
+}
+@container (min-width: 1760px) {
+  .responsive-cols { --cols: 6; }
+}

@@ -7,6 +7,7 @@ import { pickAndCopyImage } from '@/composables/useAssetImagePicker'
 import PathModeFields from '@/components/PathModeFields.vue'
 import SystemAppPicker, { type SystemAppSelection } from '@/components/dialogs/SystemAppPicker.vue'
 import { SYSTEM_TOOLS, toolIconSource } from '@/data/systemTools'
+import { onImgError, onImgLoad } from '@/composables/useImageFallback'
 
 const props = defineProps<{
   entry: Entry | null
@@ -833,7 +834,7 @@ watch(() => form.value.type, (newType, oldType) => {
           <label class="form-label">当前图标</label>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <div class="icon-preview">
-              <img v-if="form.icon.source && form.icon.type !== 'emoji'" :src="resolveAssetUrl(form.icon.source)" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
+              <img v-if="form.icon.source && form.icon.type !== 'emoji'" :src="resolveAssetUrl(form.icon.source)" alt="icon" @error="onImgError" @load="onImgLoad" />
               <span v-else-if="form.icon.type === 'emoji' && form.icon.source" class="icon-emoji-preview">{{ form.icon.source }}</span>
               <span v-else class="icon-placeholder-text">{{ form.name.charAt(0) || '?' }}</span>
             </div>
@@ -858,7 +859,7 @@ watch(() => form.value.type, (newType, oldType) => {
             <label class="form-label">封面</label>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <div class="cover-preview">
-                <img v-if="form.cover.enabled && form.cover.source" :src="resolveAssetUrl(form.cover.source)" alt="cover" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
+                <img v-if="form.cover.enabled && form.cover.source" :src="resolveAssetUrl(form.cover.source)" alt="cover" @error="onImgError" @load="onImgLoad" />
                 <span v-else class="cover-placeholder-text">无封面</span>
               </div>
               <button class="btn" @click="pickCover">选择图片...</button>

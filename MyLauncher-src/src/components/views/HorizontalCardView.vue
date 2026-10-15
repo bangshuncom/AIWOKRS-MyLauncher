@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { useEntryView, type EntryViewProps, type EntryViewEmits } from '@/composables/useEntryView'
+import { onImgError, onImgLoad } from '@/composables/useImageFallback'
+import EntryCheckbox from '@/components/entry/EntryCheckbox.vue'
+import EntryAdminBadge from '@/components/entry/EntryAdminBadge.vue'
+import EntryIcon from '@/components/entry/EntryIcon.vue'
 
 const props = defineProps<EntryViewProps>()
 const emit = defineEmits<EntryViewEmits>()
-const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pathExists, onDoubleClick } = useEntryView(props, emit)
+const { getCoverPath, onHoverCheck, onContextMenu, pathExists, onDoubleClick } = useEntryView(props, emit)
 </script>
 
 <template>
@@ -11,7 +15,7 @@ const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pa
     <div
       v-for="entry in entries"
       :key="entry.id"
-      class="h-card"
+      class="h-card entry-cell"
       :class="{
         'path-invalid': !pathExists(entry),
         'selected': batchMode && selectedIds.has(entry.id),
@@ -20,33 +24,27 @@ const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pa
       @contextmenu="onContextMenu(entry, $event)"
     >
       <!-- hover 勾选框 -->
-      <input
-        type="checkbox"
-        class="batch-checkbox"
-        :class="{ 'batch-checkbox-hover': !batchMode }"
+      <EntryCheckbox
         :checked="batchMode && selectedIds.has(entry.id)"
-        @click.stop="onHoverCheck($event, entry)"
+        :hover-only="!batchMode"
+        @click="onHoverCheck($event, entry)"
       />
 
       <!-- 管理员标识 -->
-      <div v-if="entry.run_as_admin" class="admin-badge" title="以管理员身份运行">🛡</div>
+      <EntryAdminBadge v-if="entry.run_as_admin" :top="4" :right="32" :size="14" />
 
       <!-- 封面图 -->
       <div class="h-card-cover">
-        <img v-if="getCoverPath(entry)" :src="getCoverPath(entry)" alt="cover" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
+        <img v-if="getCoverPath(entry)" :src="getCoverPath(entry)" alt="cover" @error="onImgError" @load="onImgLoad" />
         <div v-else class="h-card-cover-fallback">
-          <img v-if="getIconPath(entry)" :src="getIconPath(entry)" class="cover-icon" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
-          <span v-else-if="getIconEmoji(entry)" class="cover-emoji">{{ getIconEmoji(entry) }}</span>
-          <span v-else class="cover-initial">{{ entry.name.charAt(0) }}</span>
+          <EntryIcon :entry="entry" :size="36" :emoji-size="34" :fallback-size="28" show-initial />
         </div>
       </div>
 
       <!-- 右侧信息 -->
       <div class="h-card-info">
         <div class="h-card-header">
-          <img v-if="getIconPath(entry)" :src="getIconPath(entry)" class="h-card-icon" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
-          <span v-else-if="getIconEmoji(entry)" class="h-card-icon-emoji">{{ getIconEmoji(entry) }}</span>
-          <div v-else class="h-card-icon-placeholder"></div>
+          <EntryIcon :entry="entry" :size="18" :emoji-size="17" />
           <span class="h-card-name">{{ entry.name }}</span>
         </div>
         <!-- 网址类型：标题下显示 URL -->
@@ -99,38 +97,6 @@ const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pa
   box-shadow: 0 0 0 2px var(--color-primary);
 }
 
-.batch-checkbox {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  z-index: 3;
-}
-
-/* 非多选模式下 hover 显示勾选框 */
-.batch-checkbox-hover {
-  opacity: 0;
-  transition: opacity var(--transition);
-}
-
-.h-card:hover .batch-checkbox-hover {
-  opacity: 1;
-}
-
-.h-card.selected .batch-checkbox-hover {
-  opacity: 1;
-}
-
-.admin-badge {
-  position: absolute;
-  top: 4px;
-  right: 32px;
-  font-size: 14px;
-  z-index: 2;
-}
-
 .h-card-cover {
   width: 80px;
   height: 100%;
@@ -156,23 +122,6 @@ const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pa
   height: 100%;
 }
 
-.cover-icon {
-  width: 36px;
-  height: 36px;
-  object-fit: contain;
-}
-
-.cover-emoji {
-  font-size: 34px;
-  line-height: 1;
-}
-
-.cover-initial {
-  font-size: 28px;
-  font-weight: 300;
-  color: var(--color-text-tertiary);
-}
-
 .h-card-info {
   flex: 1;
   padding: 8px 14px;
@@ -187,25 +136,6 @@ const { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pa
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.h-card-icon {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.h-card-icon-emoji {
-  font-size: 17px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.h-card-icon-placeholder {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
 }
 
 .h-card-name {

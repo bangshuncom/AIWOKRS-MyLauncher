@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { state, appendImportedEntries } from '@/store'
 import * as api from '@/api'
 import type { ExeInfo, ImportProgressEvent } from '@/types'
+import { onImgError } from '@/composables/useImageFallback'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -242,7 +243,7 @@ async function importSelected() {
               @click="toggleSelect(getId(r))"
             >
               <input type="checkbox" :checked="selectedIds.has(getId(r))" @click.stop="toggleSelect(getId(r))" />
-              <img v-if="r.icon_path" :src="r.icon_path" class="scan-item-icon" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" />
+              <img v-if="r.icon_path" :src="r.icon_path" class="scan-item-icon" alt="icon" @error="onImgError" />
               <div v-else class="scan-item-icon-placeholder">{{ r.name.charAt(0) }}</div>
               <div class="scan-item-info">
                 <span class="scan-item-name">{{ r.name }}</span>

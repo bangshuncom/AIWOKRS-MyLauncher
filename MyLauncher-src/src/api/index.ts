@@ -3,7 +3,7 @@
 // ════════════════════════════════════════════
 
 import { invoke } from '@tauri-apps/api/core'
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { open } from '@tauri-apps/plugin-dialog'
 import type {
   AllData, AppConfig, AssetCleanResult, AutorunStatus, BatchIconSummary, Category, Entry, Environment,
   ExeInfo, FileInfo, IconRefreshResult, ImportScanSummary, InitResult, LnkInfo, PathInfo, ScanResult, ConvertPathResult,
@@ -151,10 +151,6 @@ export async function extract_system_icon(spec: string, force = false): Promise<
   return invoke<string>('extract_system_icon', { spec, force })
 }
 
-export async function extract_uri_icon(target: string): Promise<string> {
-  return invoke<string>('extract_uri_icon', { target })
-}
-
 // ─── 过期资源清理 ───
 
 /** 扫描未被引用的过期图标/封面（无副作用，仅统计） */
@@ -208,7 +204,3 @@ export async function pick_directory(): Promise<string | null> {
   return result as string | null
 }
 
-export async function save_file(defaultName: string, filters?: { name: string; extensions: string[] }[]): Promise<string | null> {
-  const result = await save({ defaultPath: defaultName, filters })
-  return result as string | null
-}

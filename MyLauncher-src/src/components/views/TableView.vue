@@ -2,30 +2,18 @@
 import type { Entry } from '@/types'
 import { getCategoryById } from '@/store'
 import { useEntryView, type EntryViewProps, type EntryViewEmits } from '@/composables/useEntryView'
+import { formatRelativeTime } from '@/utils/format'
+import EntryCheckbox from '@/components/entry/EntryCheckbox.vue'
+import EntryAdminBadge from '@/components/entry/EntryAdminBadge.vue'
+import EntryIcon from '@/components/entry/EntryIcon.vue'
 
 const props = defineProps<EntryViewProps>()
 const emit = defineEmits<EntryViewEmits>()
-const { getIconPath, getIconEmoji, onHoverCheck, onContextMenu, pathExists, onDoubleClick, hoverTip } = useEntryView(props, emit)
+const { onHoverCheck, onContextMenu, pathExists, onDoubleClick, hoverTip } = useEntryView(props, emit)
 
 function getCategoryName(catId: string): string {
   const cat = getCategoryById(catId)
   return cat?.name || '未分类'
-}
-
-function formatTime(time: string): string {
-  if (!time) return '—'
-  try {
-    const d = new Date(time)
-    const now = new Date()
-    const diff = now.getTime() - d.getTime()
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前'
-    if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
-    if (diff < 2592000000) return Math.floor(diff / 86400000) + '天前'
-    return d.toLocaleDateString('zh-CN')
-  } catch {
-    return time
-  }
 }
 
 function onRowClick(entry: Entry) {
@@ -49,7 +37,7 @@ function onRowClick(entry: Entry) {
         <tr
           v-for="entry in entries"
           :key="entry.id"
-          class="table-row"
+          class="table-row entry-cell"
           :class="{
             'path-invalid': !pathExists(entry),
             'selected': batchMode && selectedIds.has(entry.id),
@@ -60,25 +48,29 @@ function onRowClick(entry: Entry) {
           @contextmenu="onContextMenu(entry, $event)"
         >
           <td class="col-check">
-            <input
-              type="checkbox"
-              class="batch-checkbox"
-              :class="{ 'batch-checkbox-hover': !batchMode }"
+            <EntryCheckbox
               :checked="batchMode && selectedIds.has(entry.id)"
-              @click.stop="onHoverCheck($event, entry)"
+              :hover-only="!batchMode"
+              :absolute="false"
+              :size="16"
+              @click="onHoverCheck($event, entry)"
             />
           </td>
           <td class="col-icon">
-            <img v-if="getIconPath(entry)" :src="getIconPath(entry)" class="row-icon" alt="icon" @error="($event.target as HTMLImageElement).style.display='none'" @load="($event.target as HTMLImageElement).style.display=''" />
-            <span v-else-if="getIconEmoji(entry)" class="row-icon-emoji">{{ getIconEmoji(entry) }}</span>
-            <div v-else class="row-icon-placeholder">{{ entry.name.charAt(0) }}</div>
+            <EntryIcon
+              :entry="entry"
+              :size="20"
+              :fallback-size="11"
+              show-initial
+              fallback-class="entry-fallback-badge"
+            />
           </td>
           <td class="col-name">
             <span class="row-name" :title="entry.name">{{ entry.name }}</span>
-            <span v-if="entry.run_as_admin" class="admin-mini-badge" title="管理员">🛡</span>
+            <EntryAdminBadge v-if="entry.run_as_admin" :absolute="false" :size="11" />
           </td>
           <td class="col-category">{{ getCategoryName(entry.category_id) }}</td>
-          <td class="col-last-used">{{ formatTime(entry.last_used) }}</td>
+          <td class="col-last-used">{{ formatRelativeTime(entry.last_used) }}</td>
         </tr>
       </tbody>
     </table>
@@ -149,52 +141,8 @@ function onRowClick(entry: Entry) {
   text-align: center;
 }
 
-.batch-checkbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  vertical-align: middle;
-}
-
-/* 非多选模式下 hover 显示勾选框 */
-.batch-checkbox-hover {
-  opacity: 0;
-  transition: opacity var(--transition);
-}
-
-.table-row:hover .batch-checkbox-hover {
-  opacity: 1;
-}
-
-.table-row.selected .batch-checkbox-hover {
-  opacity: 1;
-}
-
 .col-icon {
   width: 40px;
-}
-
-.row-icon {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-}
-
-.row-icon-emoji {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.row-icon-placeholder {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-primary-bg);
-  border-radius: 4px;
-  font-size: 11px;
-  color: var(--color-primary-dark);
 }
 
 .col-name {
@@ -213,11 +161,6 @@ function onRowClick(entry: Entry) {
   white-space: nowrap;
 }
 
-.admin-mini-badge {
-  margin-left: 4px;
-  font-size: 11px;
-}
-
 .col-category {
   color: var(--color-text-secondary);
   /* 固定窄列：让名称列独占剩余宽度（table-layout:fixed 下未设宽的列会平分剩余空间） */
@@ -225,10 +168,6 @@ function onRowClick(entry: Entry) {
   /* 分类名过长同样截断保底（正常不会太长） */
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.status-bad {
-  color: var(--color-danger);
 }
 
 .col-last-used {

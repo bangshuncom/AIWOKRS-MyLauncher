@@ -3,7 +3,8 @@
 // ════════════════════════════════════════════
 
 import type { Entry } from '@/types'
-import { resolveAssetUrl, state } from '@/store'
+import { state } from '@/store'
+import { getIconPath, getIconEmoji, getCoverPath, hoverTip } from '@/utils/entryDisplay'
 
 export interface EntryViewProps {
   entries: Entry[]
@@ -20,22 +21,6 @@ export interface EntryViewEmits {
 }
 
 export function useEntryView(props: EntryViewProps, emit: EntryViewEmits) {
-  function getIconPath(entry: Entry): string {
-    if (entry.icon?.source && entry.icon.type !== 'emoji') return resolveAssetUrl(entry.icon.source)
-    return ''
-  }
-
-  /** emoji 图标字符（type 为 emoji 且有 source 时返回，否则空串） */
-  function getIconEmoji(entry: Entry): string {
-    if (entry.icon?.type === 'emoji' && entry.icon.source) return entry.icon.source
-    return ''
-  }
-
-  function getCoverPath(entry: Entry): string {
-    if (entry.cover?.enabled && entry.cover.source) return resolveAssetUrl(entry.cover.source)
-    return ''
-  }
-
   function onHoverCheck(e: Event, entry: Entry) {
     e.stopPropagation()
     if (!props.batchMode) state.batchMode = true
@@ -59,17 +44,6 @@ export function useEntryView(props: EntryViewProps, emit: EntryViewEmits) {
   function onDoubleClick(entry: Entry) {
     if (props.batchMode) emit('toggle-select', entry.id)
     else emit('launch', entry)
-  }
-
-  function hoverTip(entry: Entry): string {
-    if (entry.type === 'url') return entry.url || entry.name
-    if (entry.type === 'steam') {
-      // 优先展示游戏 exe 路径，无则展示启动链接
-      const exe = Object.values(entry.absolute_paths || {})[0] || ''
-      return exe || entry.url || entry.name
-    }
-    if (entry.type === 'system' || entry.type === 'appx') return entry.relative_path || entry.notes || entry.name
-    return entry.notes || entry.name
   }
 
   return { getIconPath, getIconEmoji, getCoverPath, onHoverCheck, onContextMenu, pathExists, onDoubleClick, hoverTip }
